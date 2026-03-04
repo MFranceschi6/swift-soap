@@ -1,0 +1,133 @@
+import CLibXML2
+import Foundation
+
+public struct XMLNode {
+    fileprivate let nodePointer: xmlNodePtr
+
+    init(nodePointer: xmlNodePtr) {
+        self.nodePointer = nodePointer
+    }
+
+    public var name: String? {
+        guard let namePointer = nodePointer.pointee.name else {
+            return nil
+        }
+        return String(cString: UnsafePointer<CChar>(OpaquePointer(namePointer)))
+    }
+
+    public var namespacePrefix: String? {
+        guard let namespacePointer = nodePointer.pointee.ns else {
+            return nil
+        }
+        guard let prefixPointer = namespacePointer.pointee.prefix else {
+            return nil
+        }
+        return String(cString: UnsafePointer<CChar>(OpaquePointer(prefixPointer)))
+    }
+
+    public var namespaceURI: String? {
+        guard let namespacePointer = nodePointer.pointee.ns else {
+            return nil
+        }
+        guard let hrefPointer = namespacePointer.pointee.href else {
+            return nil
+        }
+        return String(cString: UnsafePointer<CChar>(OpaquePointer(hrefPointer)))
+    }
+
+    public func text() -> String? {
+        guard let contentPointer = xmlNodeGetContent(nodePointer) else {
+            return nil
+        }
+        defer { xmlFree(contentPointer) }
+        return String(cString: UnsafePointer<CChar>(OpaquePointer(contentPointer)))
+    }
+
+    public func attribute(named attributeName: String) -> String? {
+        LibXML2.ensureInitialized()
+
+        return LibXML2.withXMLCharPointer(attributeName) { attributeNamePointer in
+            guard let valuePointer = xmlGetProp(nodePointer, attributeNamePointer) else {
+                return nil
+            }
+            defer { xmlFree(valuePointer) }
+            return String(cString: UnsafePointer<CChar>(OpaquePointer(valuePointer)))
+        }
+    }
+
+    public func children() -> [XMLNode] {
+        var nodes: [XMLNode] = []
+        var childPointer = nodePointer.pointee.children
+        while let currentPointer = childPointer {
+            if currentPointer.pointee.type == XML_ELEMENT_NODE {
+                nodes.append(XMLNode(nodePointer: currentPointer))
+            }
+            childPointer = currentPointer.pointee.next
+        }
+        return nodes
+    }
+
+    public func firstChild(named childName: String) -> XMLNode? {
+        children().first(where: { $0.name == childName })
+    }
+
+    public func setText(_ value: String) {
+        LibXML2.withXMLCharPointer(value) { valuePointer in
+            xmlNodeSetContent(nodePointer, valuePointer)
+        }
+    }
+
+    public func setAttribute(named attributeName: String, value: String) throws {
+        let result = LibXML2.withXMLCharPointer(attributeName) { attributeNamePointer in
+            LibXML2.withXMLCharPointer(value) { valuePointer in
+                xmlSetProp(nodePointer, attributeNamePointer, valuePointer)
+            }
+        }
+
+        guard result != nil else {
+            throw XMLParsingError.nodeOperationFailed(
+                message: "Unable to set attribute '\(attributeName)' on node '\(name ?? "<unknown>")'."
+            )
+        }
+    }
+
+    public func addNamespace(_ namespace: XMLNamespace) throws {
+        if namespace.prefix != nil && namespace.uri.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw XMLParsingError.invalidNamespaceConfiguration(prefix: namespace.prefix, uri: namespace.uri)
+        }
+
+        let namespacePointer = LibXML2.withXMLCharPointer(namespace.uri) { uriPointer in
+            if let prefix = namespace.prefix {
+                return LibXML2.withXMLCharPointer(prefix) { prefixPointer in
+                    xmlNewNs(nodePointer, uriPointer, prefixPointer)
+                }
+            } else {
+                return xmlNewNs(nodePointer, uriPointer, nil)
+            }
+        }
+
+        guard let namespacePointer else {
+            throw XMLParsingError.nodeOperationFailed(
+                message: "Unable to add namespace '\(namespace.uri)' to node '\(name ?? "<unknown>")'."
+            )
+        }
+
+        xmlSetNs(nodePointer, namespacePointer)
+    }
+
+    public func addChild(_ child: XMLNode) throws {
+        let parentDocument = nodePointer.pointee.doc
+        let childDocument = child.nodePointer.pointee.doc
+        if let parentDocument, let childDocument, parentDocument != childDocument {
+            throw XMLParsingError.nodeOperationFailed(
+                message: "Unable to append child from a different XML document."
+            )
+        }
+
+        guard xmlAddChild(nodePointer, child.nodePointer) != nil else {
+            throw XMLParsingError.nodeOperationFailed(
+                message: "Unable to append child '\(child.name ?? "<unknown>")' to node '\(name ?? "<unknown>")'."
+            )
+        }
+    }
+}
