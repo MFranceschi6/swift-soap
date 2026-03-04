@@ -1,0 +1,95 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    name: build-and-test (${{ matrix.os }} - Swift ${{ matrix.swift-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-22.04]
+        # Swift 5.6 is the minimum version in Package.swift (swift-tools-version: 5.6)
+        # Swift 6.2 is the latest reference version
+        swift-version: ["5.10", "6.2"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: ${{ matrix.swift-version }}
+          skip-verify-signature: true
+
+      - name: Install System Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxml2-dev bc
+
+      - name: Verify Swift version
+        run: swift --version
+
+      - name: Cache SPM dependencies and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: ${{ runner.os }}-swift-${{ matrix.swift-version }}-spm-${{ hashFiles('**/Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-${{ matrix.swift-version }}-spm-
+
+      - name: Build
+        run: swift build -c debug
+
+      - name: Run Tests (with Code Coverage)
+        run: swift test --enable-code-coverage
+
+      - name: Enforce Code Coverage (>= 90%)
+        run: |
+          BIN_PATH=$(swift build --show-bin-path)
+          PROFDATA="$BIN_PATH/codecov/default.profdata"
+          
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            TEST_BIN=$(find "$BIN_PATH" -name "*.xctest" -type d | head -n 1)
+            TEST_BIN="$TEST_BIN/Contents/MacOS/$(basename "$TEST_BIN" .xctest)"
+            LLVM_COV="$(dirname "$(which swift)")/llvm-cov"
+            if [ ! -x "$LLVM_COV" ]; then LLVM_COV="xcrun llvm-cov"; fi
+          else
+            TEST_BIN=$(find "$BIN_PATH" -name "*.xctest" -type f | head -n 1)
+            LLVM_COV="$(dirname "$(which swift)")/llvm-cov"
+            if [ ! -x "$LLVM_COV" ]; then LLVM_COV="llvm-cov"; fi
+          fi
+
+          if [ ! -f "$TEST_BIN" ] || [ ! -f "$PROFDATA" ]; then
+            echo "::error::Could not find test binary ($TEST_BIN) or profdata ($PROFDATA) for coverage."
+            exit 1
+          fi
+
+          if [[ "$LLVM_COV" == "xcrun llvm-cov" ]]; then
+            COVERAGE_REPORT=$(xcrun llvm-cov report -instr-profile="$PROFDATA" "$TEST_BIN" --ignore-filename-regex=".build|Tests|Package.swift")
+          else
+            COVERAGE_REPORT=$("$LLVM_COV" report -instr-profile="$PROFDATA" "$TEST_BIN" --ignore-filename-regex=".build|Tests|Package.swift")
+          fi
+
+          TOTAL_LINE_COV=$(printf '%s\n' "$COVERAGE_REPORT" | awk '/^TOTAL/ {print $10}')
+          TOTAL_LINE_COV="${TOTAL_LINE_COV%\%}"
+          echo "Total line coverage: $TOTAL_LINE_COV%"
+
+          if [[ -z "$TOTAL_LINE_COV" ]]; then
+            echo "::error::Unable to extract total line coverage from llvm-cov output."
+            printf '%s\n' "$COVERAGE_REPORT"
+            exit 1
+          fi
+
+          if (( $(echo "$TOTAL_LINE_COV < 90.0" | bc -l) )); then
+            echo "::error::Code coverage $TOTAL_LINE_COV% is below the 90% threshold."
+            exit 1
+          else
+            echo "Code coverage $TOTAL_LINE_COV% meets the 90% threshold."
+          fi
