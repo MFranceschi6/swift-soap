@@ -64,7 +64,17 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - A meno di necessità, il file dove viene definito un tipo (`struct`/`class`) contiene **solo la definizione minimale**:
   - proprietà/initializer essenziali e “shape” del tipo
   - **evitare logica** nel file base quando può stare in extension
+- Se un tipo dominio è naturalmente rappresentabile come tipo raw (es. `String`, `Int`), renderlo compatibile con un fallback raw:
+  - esporre sempre conversione da/verso raw value (`init(rawValue:)`, `rawValue` o equivalente),
+  - per `enum`, preferire casi standard + fallback (`custom(String)` o equivalente) per compatibilità forward/backward.
+- Nei modelli di dominio, tipizzare sempre dove possibile con tipi specializzati (enum/value object/protocolli dedicati), evitando l’uso diretto di raw type nelle API pubbliche quando i dati sono strutturati o semanticamente vincolati.
+- Preferire come default il pattern “tipo specializzato + fallback raw”:
+  - usare il tipo specializzato come rappresentazione interna/API principale,
+  - mantenere compatibilità con sistemi esterni tramite inizializzatori raw e/o casi fallback (`custom`, `unknown`, equivalente).
 - La logica e le conformances devono stare preferibilmente in file separati via `extension`, seguendo le convention di naming sotto.
+- Regola di posizionamento:
+  - se un comportamento/conformance è necessario direttamente nella dichiarazione del tipo (es. vincoli del linguaggio o invarianti essenziali), può stare nel file del tipo;
+  - in tutti gli altri casi, implementare sempre via `extension` separata.
 
 ### Naming (Swift API Design Guidelines)
 - lowerCamelCase per metodi/proprietà; UpperCamelCase per tipi.
@@ -126,7 +136,8 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - Gestire correttamente availability e compatibilità con Swift 5.10 quando si usano feature più recenti.
 
 ## 8.3) Release notes / Changelog
-- Ogni modifica user-facing deve aggiornare `CHANGELOG.md` (o le release notes) con una voce sintetica.
+- Ogni task completato deve aggiornare `CHANGELOG.md` con almeno una entry dedicata (anche per refactor/chore interni, non solo per modifiche user-facing).
+- Le entry devono essere concise ma sufficientemente dettagliate: cosa è cambiato, impatto, eventuali migrazioni/azioni richieste.
 - Usare categorie coerenti (es. Added / Fixed / Changed / Deprecated) e includere eventuali note di migrazione quando serve.
 
 ## 9) Repository conventions (standard SPM)
@@ -144,6 +155,9 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - Estensioni legate a librerie/tipi esistenti in:
   - `Nome+NomeTipo.swift`
   - esempi: `Client+URLSession.swift`, `Encoder+JSONEncoder.swift`
+- Le estensioni che implementano codice devono essere sempre in file separati dal file base del tipo.
+- Se l’implementazione in extension non è banale (più responsabilità o molte righe), separarla per concern in file dedicato:
+  - esempi: `Nome+String.swift`, `Nome+RawValue.swift`, `Nome+Codable.swift`.
 
 ## 10) Testing & Quality
 - Coverage: **tendente a ~90% ma pragmatica**:
@@ -172,11 +186,24 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 4. Implementare in modo incrementale e leggibile, preferendo `extension`.
 5. Aggiungere/aggiornare test; coverage opzionale nelle fasi esplorative, obbligatoria nella validazione finale.
 6. Eseguire SwiftFormat e verifiche CI (inclusa matrice Swift).
-7. Aggiornare documentazione/changelog se necessario.
+7. Aggiornare documentazione e `CHANGELOG.md` (entry obbligatoria per ogni task, vedi 8.3).
 8. Produrre un report di step completo prima della chiusura dello step.
 9. Autoreview: naming, edge cases, access control, backward compatibility.
 
-### 11.1) Report obbligatorio di chiusura step
+### 11.1) Mandatory pre-commit compliance gate
+- Prima di creare qualsiasi commit è obbligatorio eseguire un passaggio di compliance:
+  - rileggere `agent.md`, piani in `.cursor/plans`, report in `.cursor/report` e ogni documentazione utile del task;
+  - verificare che tutte le regole e i deliverable richiesti siano rispettati, in particolare i file da produrre per completare il task.
+- Eccezione limitata: quando le modifiche riguardano esclusivamente file di configurazione (es. `agent.md`, workflow CI, lint config, file metadata di progetto), questa fase di pre-condizioni può essere semplificata/omessa.
+  - Questa eccezione vale solo per le pre-condizioni sopra elencate.
+  - Le regole su come effettuare il commit (staging selettivo, proposta messaggio, convenzione commit, aggiornamento `CHANGELOG.md`) restano sempre obbligatorie.
+- Solo dopo questa verifica:
+  - aggiungere esplicitamente al commit solo i file desiderati (`git add` selettivo),
+  - proporre il messaggio di commit che si intende usare,
+  - creare il commit rispettando tutte le regole di commit presenti in `agent.md`.
+- Prima del commit, verificare sempre che `CHANGELOG.md` contenga l’entry del task corrente secondo la sezione 8.3.
+
+### 11.2) Report obbligatorio di chiusura step
 - Uno step di progetto può considerarsi concluso solo se accompagnato da un report dedicato.
 - Il report deve essere **tecnico e dettagliato**, non ad alto livello: ogni sezione deve consentire a un lettore tecnico di capire *cosa* è stato costruito, *come* funziona internamente e *perché* sono state fatte quelle scelte.
 
@@ -229,6 +256,10 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - Non introdurre dipendenze senza verifica licenza e reputazione.
 
 ## 14) Changelog dell’agent
+- v0.12: Aggiunta eccezione al pre-commit compliance gate per cambiamenti solo di configurazione; l’eccezione non modifica le regole su come eseguire i commit.
+- v0.11: Aggiunto pre-commit compliance gate obbligatorio (rilettura agent/piani/report/docs, verifica deliverable, staging selettivo, proposta messaggio) e obbligo di entry sempre presente in `CHANGELOG.md` con dettaglio conciso.
+- v0.10: Rafforzata la regola “type-safe first”: usare tipi specializzati al posto di raw type dove possibile e preferire sempre il pattern con fallback raw per interoperabilità.
+- v0.9: Aggiunte regole su compatibilità raw-type (es. String), fallback `custom` negli enum, e organizzazione obbligatoria delle implementazioni in extension/file dedicati.
 - v0.8: Aggiornata la compatibilità minima del progetto a Swift 5.10 (target + policy di testing/concurrency).
 - v0.7: Aggiunto requirement su SwiftLint: i risultati devono essere accettabili e l'output verbatim deve essere allegato al report finale.
 - v0.5: Dipendenze SSWG approvate (con documentazione obbligatoria dello scopo dell’introduzione); naming: no abbreviazioni nei tipi (Request/Response, non Req/Res); lingua: codice e documentazione in inglese.
