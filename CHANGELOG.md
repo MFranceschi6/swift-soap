@@ -6,10 +6,32 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Added
+- Introduced the initial `SwiftSOAPCore` module with typed, `Codable` and `Sendable` SOAP domain models:
+  - `SOAPEnvelope`, `SOAPBody`, `SOAPHeader`, `SOAPFault`.
+  - payload protocols (`SOAPBodyPayload`, `SOAPHeaderPayload`, `SOAPFaultDetailPayload`) and empty marker payloads.
+  - specialized value types for SOAP constants with fallback support (`SOAPEnvelopeNamespace`, `SOAPFaultCode`).
+  - client/server transport contracts (`SOAPClientTransport`, `SOAPServerTransport`) and shared `SOAPCoreError`.
+- Added `SwiftSOAPCore` test suite covering:
+  - typed model initialization and validation behavior.
+  - enum/raw fallback mapping and namespace/fault invariants.
+  - codable round-trips for structured SOAP models.
+  - transport protocol contract behavior with deterministic stubs.
+
 ### Changed
 - Updated `agent.md` pre-commit policy:
   - the mandatory pre-commit compliance gate can be simplified/skipped when changes are limited to configuration files only (e.g. `agent.md`, CI workflows, lint config, project metadata).
   - this exception applies only to pre-conditions; commit execution rules remain mandatory (selective staging, commit message convention, and `CHANGELOG.md` update).
+- Updated `agent.md` style policy:
+  - type declarations (`struct`/`class`/`enum`/`protocol`) must stay inline on a single line;
+  - line breaks are allowed only after a `where` clause when needed for readability.
+- Updated `agent.md` commit workflow policy:
+  - commit message must describe the overall technical task scope, not the last micro-request;
+  - when step reports are required, step closure must stop before commit and wait for explicit user go-ahead;
+  - optional general context file is allowed to preserve task continuity.
+- Updated `Package.swift` to expose the new `SwiftSOAPCore` library product and its dedicated test target.
+- Reorganized implementation-bearing extensions into dedicated files (for example `+Logic`, `+Codable`) to align with repository conventions.
+- Updated `SOAPEnvelope` declaration to enforce inline type declaration style, with a scoped SwiftLint `line_length` exception on the declaration line.
 
 ## [2026-03-04]
 

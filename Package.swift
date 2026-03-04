@@ -8,6 +8,7 @@ let package = Package(
         .macOS(.v10_15)
     ],
     products: [
+        .library(name: "SwiftSOAPCore", targets: ["SwiftSOAPCore"]),
         .library(name: "SwiftSOAPXML", targets: ["SwiftSOAPXML"]),
     ],
     dependencies: [
@@ -23,6 +24,13 @@ let package = Package(
             ]
         ),
         .target(
+            name: "SwiftSOAPCore",
+            dependencies: [
+                "SwiftSOAPXML",
+                .product(name: "Logging", package: "swift-log")
+            ]
+        ),
+        .target(
             name: "SwiftSOAPXML",
             dependencies: [
                 "CLibXML2",
@@ -30,9 +38,12 @@ let package = Package(
             ]
         ),
         .testTarget(
+            name: "SwiftSOAPCoreTests",
+            dependencies: ["SwiftSOAPCore"]
+        ),
+        .testTarget(
             name: "SwiftSOAPXMLTests",
             dependencies: ["SwiftSOAPXML"]
         ),
     ]
 )
-

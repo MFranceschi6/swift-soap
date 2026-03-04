@@ -1,0 +1,7 @@
+public enum SOAPCoreError: Error {
+    case invalidEnvelope(message: String?)
+    case invalidBodyConfiguration(message: String?)
+    case invalidPayload(message: String?)
+    case invalidFault(message: String?)
+    case other(underlyingError: Error?, message: String?)
+}

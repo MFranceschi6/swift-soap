@@ -75,6 +75,9 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - Regola di posizionamento:
   - se un comportamento/conformance è necessario direttamente nella dichiarazione del tipo (es. vincoli del linguaggio o invarianti essenziali), può stare nel file del tipo;
   - in tutti gli altri casi, implementare sempre via `extension` separata.
+- Dichiarazione dei tipi (`struct`/`class`/`enum`/`protocol`) sempre **inline su una singola riga**:
+  - parametri generici, conformances e vincoli principali devono restare sulla stessa riga della dichiarazione;
+  - eccezione ammessa solo per la clausola `where`, che può andare a capo quando migliora la leggibilità.
 
 ### Naming (Swift API Design Guidelines)
 - lowerCamelCase per metodi/proprietà; UpperCamelCase per tipi.
@@ -202,6 +205,9 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
   - proporre il messaggio di commit che si intende usare,
   - creare il commit rispettando tutte le regole di commit presenti in `agent.md`.
 - Prima del commit, verificare sempre che `CHANGELOG.md` contenga l’entry del task corrente secondo la sezione 8.3.
+- Se il task prevede report/validazioni da revisionare, la chiusura dello step deve fermarsi **prima del commit**:
+  - presentare report, stato di compliance e contenuto staged;
+  - attendere decisione esplicita dell’utente sul proseguimento o meno con il commit.
 
 ### 11.2) Report obbligatorio di chiusura step
 - Uno step di progetto può considerarsi concluso solo se accompagnato da un report dedicato.
@@ -249,6 +255,14 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - I commit devono usare **sempre** emoji in apertura messaggio secondo uno standard condiviso (es. Gitmoji), in modo coerente con il tipo di modifica.
 - L’emoji deve rappresentare chiaramente l’intento del commit (feature, fix, refactor, test, docs, CI, chore, ecc.).
 - Mantenere il messaggio breve, descrittivo e consistente con la convenzione scelta.
+- Il messaggio deve descrivere il **task tecnico complessivo** coperto dal commit, non solo l’ultima richiesta puntuale ricevuta durante la sessione.
+
+## 12.2) Context file (opzionale)
+- Se necessario per mantenere continuità e ridurre ambiguità, è consentito creare/aggiornare un file di contesto generale del task (es. in `.cursor/`) con:
+  - obiettivi correnti,
+  - decisioni prese,
+  - stato dei deliverable e dei controlli qualità.
+- Il file di contesto è un supporto operativo e non sostituisce report tecnici o `CHANGELOG.md`.
 
 ## 13) Security & Safety
 - Gestire input non fidati in modo robusto.
@@ -256,6 +270,8 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - Non introdurre dipendenze senza verifica licenza e reputazione.
 
 ## 14) Changelog dell’agent
+- v0.14: Commit message riferito al task tecnico complessivo; quando sono previsti report lo step si chiude prima del commit in attesa del via libera utente; aggiunta possibilità di file di contesto generale opzionale.
+- v0.13: Aggiunta regola di stile: dichiarazioni di tipo sempre inline su singola riga, con unica eccezione per eventuale clausola `where` su riga separata.
 - v0.12: Aggiunta eccezione al pre-commit compliance gate per cambiamenti solo di configurazione; l’eccezione non modifica le regole su come eseguire i commit.
 - v0.11: Aggiunto pre-commit compliance gate obbligatorio (rilettura agent/piani/report/docs, verifica deliverable, staging selettivo, proposta messaggio) e obbligo di entry sempre presente in `CHANGELOG.md` con dettaglio conciso.
 - v0.10: Rafforzata la regola “type-safe first”: usare tipi specializzati al posto di raw type dove possibile e preferire sempre il pattern con fallback raw per interoperabilità.
