@@ -34,8 +34,12 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 
 ## 4) Target & compatibilità (Swift, SPM + Linux)
 - La libreria è **Swift Package Manager only**.
-- Compatibilità minima: **Swift 5.10**.
-- La libreria deve **targettare sempre l’ultima versione di Swift** disponibile (senza rompere compatibilità con 5.10).
+- Modello compatibilità a lane:
+  - **runtime-5.4**: target legacy per API EventLoop/NIO (senza dipendenze obbligatorie da `async/await`);
+  - **tooling-5.6+**: plugin/codegen e tooling build-time;
+  - **quality-5.10**: baseline di qualità (lint/test/coverage obbligatori);
+  - **latest**: ultima versione Swift stabile, usata per feature additive del linguaggio.
+- Fino al completamento dello split runtime (`NIO/EventLoop` vs `Async/Await`), i moduli runtime correnti possono restare su baseline Swift 5.10; la lane runtime-5.4 resta comunque un target obbligatorio di roadmap/versioning.
 - Le modifiche devono restare compatibili con **Linux**:
   - evitare API Apple-only non disponibili su Linux,
   - evitare dipendenze implicite da Foundation dove non necessarie,
@@ -129,14 +133,15 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - La libreria garantisce compatibilità a livello di **source/API** secondo SemVer, ma **non** promette ABI stability/binary compatibility tra versioni.
 - Le modifiche che impattano la firma delle API pubbliche seguono le regole su breaking changes, deprecazioni e migrazione.
 
-## 8.2) Concurrency e Sendable (Swift 5.10+)
+## 8.2) Concurrency e Sendable (lane moderne Swift 5.5+)
 - Se vengono introdotte API concorrenti (`async/await`, `Task`, actors), mantenere il design:
   - thread-safe per default,
   - senza shared mutable state non protetto,
   - con chiari confini di responsabilità.
 - Preferire tipi value (`struct`) immutabili quando possibile.
 - Usare `Sendable`/`@Sendable` quando utile per esprimere intent e sicurezza, evitando annotazioni “rumorose” se non necessarie.
-- Gestire correttamente availability e compatibilità con Swift 5.10 quando si usano feature più recenti.
+- Le superfici API `async/await` e `EventLoop` devono restare separate (nessun adapter implicito cross-lane).
+- Gestire availability e gating per lane (runtime-5.4, quality-5.10, latest) quando si usano feature introdotte in versioni più recenti.
 
 ## 8.3) Release notes / Changelog
 - Ogni task completato deve aggiornare `CHANGELOG.md` con almeno una entry dedicata (anche per refactor/chore interni, non solo per modifiche user-facing).
@@ -177,14 +182,15 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 
 ### Matrice versioni Swift
 - I test devono essere eseguiti (CI) su **più versioni di Swift**:
-  - minimo: **Swift 5.10**
-  - includere anche **l’ultima Swift** supportata dal progetto
-  - se possibile, includere una o più versioni intermedie rilevanti.
+  - `runtime-5.4`: check di compatibilità runtime legacy/eventloop (almeno smoke o build mirata in base allo stato roadmap);
+  - `tooling-5.6+`: check manifest/tooling build-time;
+  - `quality-5.10`: gate completo lint/test/coverage;
+  - `latest`: validazione sull’ultima Swift disponibile.
 - I test e le fixture non devono dipendere da comportamenti specifici di una singola versione.
 
 ## 11) Workflow operativo
 1. **Branching**: Per ogni nuovo task o issue, creare e lavorare sempre su un nuovo branch dedicato.
-2. Comprendere requisiti e vincoli (API pubbliche, compatibilità Linux, Swift >= 5.10, stile, naming file).
+2. Comprendere requisiti e vincoli (API pubbliche, compatibilità Linux, lane Swift attive: runtime-5.4/tooling-5.6+/quality-5.10/latest, stile, naming file).
 3. Se cambia una API pubblica: proporre design, alternative e trade-off.
 4. Implementare in modo incrementale e leggibile, preferendo `extension`.
 5. Aggiungere/aggiornare test; coverage opzionale nelle fasi esplorative, obbligatoria nella validazione finale.
@@ -261,6 +267,11 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - Seguire SemVer.
 - Deprecare prima di rimuovere e documentare migrazione.
 - Evitare bump major non necessari.
+- Mantenere la strategia multi-manifest in repo:
+  - `Package.swift` baseline legacy (`swift-tools-version: 5.4`);
+  - `Package@swift-5.6.swift` per lane tooling/runtime moderna;
+  - `Package@swift-6.0.swift` (o successivo) per lane latest e feature additive di linguaggio.
+- Evitare di introdurre feature/target in manifest legacy che richiedono toolchain non disponibili in quella lane.
 
 ## 12.1) Commit message convention
 - I commit devono usare **sempre** emoji in apertura messaggio secondo uno standard condiviso (es. Gitmoji), in modo coerente con il tipo di modifica.
@@ -281,6 +292,7 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - Non introdurre dipendenze senza verifica licenza e reputazione.
 
 ## 14) Changelog dell’agent
+- v0.16: Introdotto modello compatibilità a lane (`runtime-5.4`, `tooling-5.6+`, `quality-5.10`, `latest`) con regole su separazione EventLoop vs async, matrice CI aggiornata e strategia multi-manifest (`Package.swift`, `Package@swift-5.6.swift`, `Package@swift-6.0.swift`).
 - v0.15: Aggiunto workflow globale a epic (branch `codex/epic-*`, PR dedicate su main) e policy commit intermedi: rilassamento limitato a lint/test con build+report obbligatori; commit finale epic con gate standard completi.
 - v0.14: Commit message riferito al task tecnico complessivo; quando sono previsti report lo step si chiude prima del commit in attesa del via libera utente; aggiunta possibilità di file di contesto generale opzionale.
 - v0.13: Aggiunta regola di stile: dichiarazioni di tipo sempre inline su singola riga, con unica eccezione per eventuale clausola `where` su riga separata.

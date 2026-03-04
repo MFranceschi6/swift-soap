@@ -19,6 +19,17 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - transport protocol contract behavior with deterministic stubs.
 
 ### Changed
+- Introduced Epic 2 versioning scaffolding with a multi-manifest layout:
+  - `Package.swift` now represents the legacy baseline (`swift-tools-version: 5.4`);
+  - `Package@swift-5.6.swift` defines the current runtime/tooling package graph;
+  - `Package@swift-6.0.swift` defines the latest-lane package graph.
+- Updated CI/workflow scaffolding to align with versioned manifests:
+  - cache key now tracks `Package.swift` and `Package@swift-*.swift`;
+  - compatibility skeleton lanes now list and reference the versioned manifest set.
+- Updated `agent.md` compatibility policy from single-version minimum to explicit lanes:
+  - `runtime-5.4`, `tooling-5.6+`, `quality-5.10`, `latest`;
+  - explicit separation rule for `EventLoop` vs `async/await` API surfaces;
+  - multi-manifest strategy documented under versioning rules.
 - Added Epic-based governance baseline for roadmap execution:
   - each roadmap step is handled as an epic on a dedicated `codex/epic-<n>-<slug>` branch and merged through a PR to `main`;
   - intermediate commits may relax only lint/test green status, while `swift build` and step reports remain mandatory.
