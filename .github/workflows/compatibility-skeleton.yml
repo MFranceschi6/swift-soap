@@ -23,9 +23,12 @@ jobs:
       - name: Smoke check
         run: swift --version
 
+      - name: List versioned manifests
+        run: ls -1 Package*.swift
+
       - name: TODO runtime-5.4 lane
         run: |
-          echo "TODO: replace skeleton with real Swift 5.4 runtime build/test checks."
+          echo "TODO: validate legacy runtime lane with Package.swift (swift-tools-version: 5.4)."
 
   tooling-5_6_plus:
     name: tooling-5.6+ (skeleton)
@@ -43,9 +46,12 @@ jobs:
       - name: Smoke check
         run: swift --version
 
+      - name: List versioned manifests
+        run: ls -1 Package*.swift
+
       - name: TODO tooling-5.6+ lane
         run: |
-          echo "TODO: add CodeGen/Plugin checks when tooling targets are introduced."
+          echo "TODO: validate tooling lane against Package@swift-5.6.swift."
 
   quality-5_10:
     name: quality-5.10 (skeleton)
@@ -61,6 +67,9 @@ jobs:
 
       - name: Smoke check
         run: swift --version
+
+      - name: List versioned manifests
+        run: ls -1 Package*.swift
 
       - name: TODO quality-5.10 lane
         run: |
@@ -81,6 +90,9 @@ jobs:
       - name: Smoke check
         run: swift --version
 
+      - name: List versioned manifests
+        run: ls -1 Package*.swift
+
       - name: TODO latest lane
         run: |
-          echo "TODO: add modern-language feature validation (typed throws and additive APIs)."
+          echo "TODO: validate latest lane against Package@swift-6.0.swift and modern language features."
