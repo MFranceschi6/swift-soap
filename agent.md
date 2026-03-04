@@ -186,6 +186,9 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
   - `tooling-5.6+`: check manifest/tooling build-time;
   - `quality-5.10`: gate completo lint/test/coverage;
   - `latest`: validazione sull’ultima Swift disponibile.
+- Oltre alla CI, prima della chiusura di uno step che può essere influenzato dalla versione Swift, è obbligatoria una validazione locale sulle lane/versioni che introducono differenze di comportamento o compilazione:
+  - eseguire build/test locali per ogni lane impattata (`runtime-5.4`, `tooling-5.6+`, `quality-5.10`, `latest`);
+  - se una lane non è applicabile allo step corrente, motivarlo esplicitamente nel report tecnico.
 - I test e le fixture non devono dipendere da comportamenti specifici di una singola versione.
 
 ## 11) Workflow operativo
@@ -292,6 +295,7 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - Non introdurre dipendenze senza verifica licenza e reputazione.
 
 ## 14) Changelog dell’agent
+- v0.17: Aggiunto obbligo di validazione locale multi-lane prima della chiusura degli step impattati da differenze tra versioni Swift, con motivazione esplicita in report quando una lane non è applicabile.
 - v0.16: Introdotto modello compatibilità a lane (`runtime-5.4`, `tooling-5.6+`, `quality-5.10`, `latest`) con regole su separazione EventLoop vs async, matrice CI aggiornata e strategia multi-manifest (`Package.swift`, `Package@swift-5.6.swift`, `Package@swift-6.0.swift`).
 - v0.15: Aggiunto workflow globale a epic (branch `codex/epic-*`, PR dedicate su main) e policy commit intermedi: rilassamento limitato a lint/test con build+report obbligatori; commit finale epic con gate standard completi.
 - v0.14: Commit message riferito al task tecnico complessivo; quando sono previsti report lo step si chiude prima del commit in attesa del via libera utente; aggiunta possibilità di file di contesto generale opzionale.

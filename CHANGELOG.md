@@ -17,8 +17,24 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - enum/raw fallback mapping and namespace/fault invariants.
   - codable round-trips for structured SOAP models.
   - transport protocol contract behavior with deterministic stubs.
+- Added the initial runtime API split surface for Epic 3:
+  - new Async modules: `SwiftSOAPClientAsync`, `SwiftSOAPServerAsync`;
+  - new EventLoop/NIO modules: `SwiftSOAPClientNIO`, `SwiftSOAPServerNIO`;
+  - typed operation contracts in `SwiftSOAPCore` (`SOAPOperationContract`, `SOAPOperationIdentifier`, `SOAPAction`, `SOAPOperationResponse`).
+- Added contract-focused test targets for all new runtime surfaces:
+  - `SwiftSOAPClientAsyncTests`,
+  - `SwiftSOAPServerAsyncTests`,
+  - `SwiftSOAPClientNIOTests`,
+  - `SwiftSOAPServerNIOTests`.
 
 ### Changed
+- Upgraded the compatibility workflow from skeleton placeholders to lane-based executable checks:
+  - `runtime-5.4` uses a legacy manifest smoke validation strategy in Docker (`swift:5.4`);
+  - `tooling-5.6+` runs real build checks with Swift 5.6;
+  - `quality-5.10` runs lint/build/test/coverage gates;
+  - `latest` runs build/test on the latest lane.
+- Updated versioned manifests (`Package@swift-5.6.swift`, `Package@swift-6.0.swift`) to expose and test Async/NIO split targets.
+- Updated `agent.md` with explicit local multi-lane validation requirement for Swift-version-sensitive steps (`v0.17`).
 - Introduced Epic 2 versioning scaffolding with a multi-manifest layout:
   - `Package.swift` now represents the legacy baseline (`swift-tools-version: 5.4`);
   - `Package@swift-5.6.swift` defines the current runtime/tooling package graph;
