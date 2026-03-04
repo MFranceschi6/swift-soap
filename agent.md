@@ -193,6 +193,12 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 8. Produrre un report di step completo prima della chiusura dello step.
 9. Autoreview: naming, edge cases, access control, backward compatibility.
 
+### 11.0) Epic workflow (globale)
+- Ogni step di roadmap è trattato come **epic** e deve avere un branch dedicato con naming:
+  - `codex/epic-<n>-<slug>`.
+- Ogni epic va integrata in `main` tramite PR dedicata (no lavoro diretto su `main`).
+- Se un epic è composta da più step tecnici, mantenere commit e report tracciabili per step.
+
 ### 11.1) Mandatory pre-commit compliance gate
 - Prima di creare qualsiasi commit è obbligatorio eseguire un passaggio di compliance:
   - rileggere `agent.md`, piani in `.cursor/plans`, report in `.cursor/report` e ogni documentazione utile del task;
@@ -200,6 +206,11 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - Eccezione limitata: quando le modifiche riguardano esclusivamente file di configurazione (es. `agent.md`, workflow CI, lint config, file metadata di progetto), questa fase di pre-condizioni può essere semplificata/omessa.
   - Questa eccezione vale solo per le pre-condizioni sopra elencate.
   - Le regole su come effettuare il commit (staging selettivo, proposta messaggio, convenzione commit, aggiornamento `CHANGELOG.md`) restano sempre obbligatorie.
+- Eccezione commit intermedio (solo per epic in corso): nei commit intermedi è consentito rilassare esclusivamente il vincolo "lint/test verdi", a condizione che:
+  - la build (`swift build`) risulti comunque verde;
+  - venga prodotto/aggiornato un report di step coerente;
+  - gli output dei controlli eseguiti (inclusi lint/test anche se non verdi) siano riportati verbatim nel report.
+- Nel commit finale di chiusura epic tornano obbligatori tutti i gate standard previsti dal repository (lint/test/coverage secondo policy).
 - Solo dopo questa verifica:
   - aggiungere esplicitamente al commit solo i file desiderati (`git add` selettivo),
   - proporre il messaggio di commit che si intende usare,
@@ -270,6 +281,7 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - Non introdurre dipendenze senza verifica licenza e reputazione.
 
 ## 14) Changelog dell’agent
+- v0.15: Aggiunto workflow globale a epic (branch `codex/epic-*`, PR dedicate su main) e policy commit intermedi: rilassamento limitato a lint/test con build+report obbligatori; commit finale epic con gate standard completi.
 - v0.14: Commit message riferito al task tecnico complessivo; quando sono previsti report lo step si chiude prima del commit in attesa del via libera utente; aggiunta possibilità di file di contesto generale opzionale.
 - v0.13: Aggiunta regola di stile: dichiarazioni di tipo sempre inline su singola riga, con unica eccezione per eventuale clausola `where` su riga separata.
 - v0.12: Aggiunta eccezione al pre-commit compliance gate per cambiamenti solo di configurazione; l’eccezione non modifica le regole su come eseguire i commit.

@@ -19,6 +19,14 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - transport protocol contract behavior with deterministic stubs.
 
 ### Changed
+- Added Epic-based governance baseline for roadmap execution:
+  - each roadmap step is handled as an epic on a dedicated `codex/epic-<n>-<slug>` branch and merged through a PR to `main`;
+  - intermediate commits may relax only lint/test green status, while `swift build` and step reports remain mandatory.
+- Added a compatibility CI skeleton workflow with placeholder lanes:
+  - `runtime-5.4`,
+  - `tooling-5.6+`,
+  - `quality-5.10`,
+  - `latest`.
 - Updated `agent.md` pre-commit policy:
   - the mandatory pre-commit compliance gate can be simplified/skipped when changes are limited to configuration files only (e.g. `agent.md`, CI workflows, lint config, project metadata).
   - this exception applies only to pre-conditions; commit execution rules remain mandatory (selective staging, commit message convention, and `CHANGELOG.md` update).

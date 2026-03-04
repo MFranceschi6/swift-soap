@@ -1,0 +1,86 @@
+name: Compatibility Skeleton
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  runtime-5_4:
+    name: runtime-5.4 (skeleton)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Swift (skeleton toolchain)
+        uses: swift-actions/setup-swift@v2
+        with:
+          # Skeleton lane: real Swift 5.4 enforcement will be implemented in a dedicated epic.
+          swift-version: "5.10"
+          skip-verify-signature: true
+
+      - name: Smoke check
+        run: swift --version
+
+      - name: TODO runtime-5.4 lane
+        run: |
+          echo "TODO: replace skeleton with real Swift 5.4 runtime build/test checks."
+
+  tooling-5_6_plus:
+    name: tooling-5.6+ (skeleton)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Swift (skeleton toolchain)
+        uses: swift-actions/setup-swift@v2
+        with:
+          # Skeleton lane: tooling checks will be implemented with versioned manifests.
+          swift-version: "5.10"
+          skip-verify-signature: true
+
+      - name: Smoke check
+        run: swift --version
+
+      - name: TODO tooling-5.6+ lane
+        run: |
+          echo "TODO: add CodeGen/Plugin checks when tooling targets are introduced."
+
+  quality-5_10:
+    name: quality-5.10 (skeleton)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "5.10"
+          skip-verify-signature: true
+
+      - name: Smoke check
+        run: swift --version
+
+      - name: TODO quality-5.10 lane
+        run: |
+          echo "TODO: wire lint/test/coverage checks in the dedicated epic."
+
+  latest:
+    name: latest (skeleton)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.2"
+          skip-verify-signature: true
+
+      - name: Smoke check
+        run: swift --version
+
+      - name: TODO latest lane
+        run: |
+          echo "TODO: add modern-language feature validation (typed throws and additive APIs)."
