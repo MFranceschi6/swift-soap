@@ -1,4 +1,4 @@
-name: Compatibility Skeleton
+name: Compatibility Matrix
 
 on:
   push:
@@ -8,39 +8,45 @@ on:
 
 jobs:
   runtime-5_4:
-    name: runtime-5.4 (skeleton)
+    name: runtime-5.4
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Swift (skeleton toolchain)
-        uses: swift-actions/setup-swift@v2
-        with:
-          # Skeleton lane: real Swift 5.4 enforcement will be implemented in a dedicated epic.
-          swift-version: "5.10"
-          skip-verify-signature: true
-
-      - name: Smoke check
-        run: swift --version
-
       - name: List versioned manifests
         run: ls -1 Package*.swift
 
-      - name: TODO runtime-5.4 lane
+      - name: Validate runtime lane with Swift 5.4
         run: |
-          echo "TODO: validate legacy runtime lane with Package.swift (swift-tools-version: 5.4)."
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            swift:5.4 \
+            bash -lc '
+              set -euo pipefail
+              apt-get update >/dev/null
+              apt-get install -y libxml2-dev >/dev/null
+              rm -rf /tmp/swift-lane-workspace
+              mkdir -p /tmp/swift-lane-workspace
+              cp -a /workspace/Package*.swift /tmp/swift-lane-workspace/
+              cp -a /workspace/Sources /tmp/swift-lane-workspace/
+              cp -a /workspace/Tests /tmp/swift-lane-workspace/
+              cd /tmp/swift-lane-workspace
+              swift --version
+              # Legacy lane is manifest-level smoke by design in the current roadmap state.
+              swift package describe > /tmp/runtime-5.4-package-describe.txt
+            '
 
   tooling-5_6_plus:
-    name: tooling-5.6+ (skeleton)
+    name: tooling-5.6+
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Swift (skeleton toolchain)
+      - name: Setup Swift
         uses: swift-actions/setup-swift@v2
         with:
-          # Skeleton lane: tooling checks will be implemented with versioned manifests.
-          swift-version: "5.10"
+          swift-version: "5.6"
           skip-verify-signature: true
 
       - name: Smoke check
@@ -49,13 +55,17 @@ jobs:
       - name: List versioned manifests
         run: ls -1 Package*.swift
 
-      - name: TODO tooling-5.6+ lane
+      - name: Install System Dependencies (Linux)
         run: |
-          echo "TODO: validate tooling lane against Package@swift-5.6.swift."
+          sudo apt-get update
+          sudo apt-get install -y libxml2-dev
+
+      - name: Build (Swift 5.6 tooling lane)
+        run: swift build -c debug
 
   quality-5_10:
-    name: quality-5.10 (skeleton)
-    runs-on: ubuntu-22.04
+    name: quality-5.10
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
@@ -71,12 +81,55 @@ jobs:
       - name: List versioned manifests
         run: ls -1 Package*.swift
 
-      - name: TODO quality-5.10 lane
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: Run SwiftLint
+        run: swiftlint lint --reporter github-actions-logging
+
+      - name: Build
+        run: swift build -c debug
+
+      - name: Run Tests (with Code Coverage)
+        run: swift test --enable-code-coverage
+
+      - name: Enforce Code Coverage (>= 90%)
         run: |
-          echo "TODO: wire lint/test/coverage checks in the dedicated epic."
+          BIN_PATH=$(swift build --show-bin-path)
+          PROFDATA="$BIN_PATH/codecov/default.profdata"
+          TEST_BUNDLE=$(find "$BIN_PATH" -name "*.xctest" -type d | head -n 1)
+          TEST_BIN="$TEST_BUNDLE/Contents/MacOS/$(basename "$TEST_BUNDLE" .xctest)"
+          LLVM_COV="$(dirname "$(which swift)")/llvm-cov"
+          if [ ! -x "$LLVM_COV" ]; then LLVM_COV="xcrun llvm-cov"; fi
+
+          if [ ! -f "$TEST_BIN" ] || [ ! -f "$PROFDATA" ]; then
+            echo "::error::Could not find test binary ($TEST_BIN) or profdata ($PROFDATA)."
+            exit 1
+          fi
+
+          if [[ "$LLVM_COV" == "xcrun llvm-cov" ]]; then
+            COVERAGE_REPORT=$(xcrun llvm-cov report -instr-profile="$PROFDATA" "$TEST_BIN" --ignore-filename-regex=".build|Tests|Package.swift")
+          else
+            COVERAGE_REPORT=$("$LLVM_COV" report -instr-profile="$PROFDATA" "$TEST_BIN" --ignore-filename-regex=".build|Tests|Package.swift")
+          fi
+
+          TOTAL_LINE_COV=$(printf '%s\n' "$COVERAGE_REPORT" | awk '/^TOTAL/ {print $10}')
+          TOTAL_LINE_COV="${TOTAL_LINE_COV%\%}"
+          echo "Total line coverage: $TOTAL_LINE_COV%"
+
+          if [[ -z "$TOTAL_LINE_COV" ]]; then
+            echo "::error::Unable to extract total line coverage."
+            printf '%s\n' "$COVERAGE_REPORT"
+            exit 1
+          fi
+
+          awk "BEGIN { exit !($TOTAL_LINE_COV >= 90.0) }" || {
+            echo "::error::Code coverage $TOTAL_LINE_COV% is below the 90% threshold."
+            exit 1
+          }
 
   latest:
-    name: latest (skeleton)
+    name: latest
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -93,6 +146,14 @@ jobs:
       - name: List versioned manifests
         run: ls -1 Package*.swift
 
-      - name: TODO latest lane
+      - name: Install System Dependencies (Linux)
         run: |
-          echo "TODO: validate latest lane against Package@swift-6.0.swift and modern language features."
+          sudo apt-get update
+          sudo apt-get install -y libxml2-dev
+
+      - name: Build
+        run: swift build -c debug
+
+      - name: Run Tests
+        run: |
+          swift test
