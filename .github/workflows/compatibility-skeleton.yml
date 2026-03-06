@@ -43,28 +43,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Swift
-        uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: "5.6"
-          skip-verify-signature: true
-
-      - name: Smoke check
-        run: swift --version
-
       - name: List versioned manifests
         run: ls -1 Package*.swift
 
-      - name: Install System Dependencies (Linux)
+      - name: Validate tooling lane with Swift 5.6
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libxml2-dev
-
-      - name: Build (Swift 5.6 tooling lane)
-        run: swift build -c debug
-
-      - name: Run Tests (Swift 5.6 tooling lane)
-        run: swift test --parallel --num-workers 1
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            swift:5.6 \
+            bash -lc '
+              set -euo pipefail
+              apt-get update >/dev/null
+              apt-get install -y libxml2-dev >/dev/null
+              rm -rf /tmp/swift-lane-workspace
+              mkdir -p /tmp/swift-lane-workspace
+              cp -a /workspace/Package*.swift /tmp/swift-lane-workspace/
+              cp -a /workspace/Sources /tmp/swift-lane-workspace/
+              cp -a /workspace/Tests /tmp/swift-lane-workspace/
+              cd /tmp/swift-lane-workspace
+              swift --version
+              swift build -c debug --jobs 1
+              swift test --jobs 1 --parallel --num-workers 1
+            '
 
   quality-5_10:
     name: quality-5.10
@@ -76,7 +77,6 @@ jobs:
         uses: swift-actions/setup-swift@v2
         with:
           swift-version: "5.10"
-          skip-verify-signature: true
 
       - name: Smoke check
         run: swift --version
@@ -141,7 +141,6 @@ jobs:
         uses: swift-actions/setup-swift@v2
         with:
           swift-version: "6.2"
-          skip-verify-signature: true
 
       - name: Smoke check
         run: swift --version
