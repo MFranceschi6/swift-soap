@@ -1,6 +1,7 @@
 import Foundation
 import Logging
-@preconcurrency import SwiftSOAPCompatibility
+import SwiftSOAPCompatibility
+import SwiftSOAPXMLCShim
 
 public struct XMLDocument: Sendable {
     private final class Storage: @unchecked Sendable {
@@ -312,7 +313,7 @@ public struct XMLDocument: Sendable {
             throw XMLParsingError.other(underlyingError: nil, message: message ?? "XML serialization failed.")
         }
 
-        defer { xmlFree(bufferPointer) }
+        defer { swiftsoap_xml_free_xml_char(bufferPointer) }
         return Data(bytes: bufferPointer, count: Int(size))
     }
 
