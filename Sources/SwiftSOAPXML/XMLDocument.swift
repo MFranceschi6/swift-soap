@@ -1,4 +1,4 @@
-import CLibXML2
+@preconcurrency import CLibXML2
 import Foundation
 import Logging
 
@@ -11,7 +11,7 @@ public struct XMLDocument: Sendable {
         }
 
         deinit {
-            if let documentPointer {
+            if let documentPointer = documentPointer {
                 xmlFreeDoc(documentPointer)
             }
         }
@@ -63,7 +63,7 @@ public struct XMLDocument: Sendable {
         let documentPointer = LibXML2.withXMLCharPointer("1.0") { versionPointer in
             xmlNewDoc(versionPointer)
         }
-        guard let documentPointer else {
+        guard let documentPointer = documentPointer else {
             throw XMLParsingError.documentCreationFailed(message: "Unable to allocate XML document.")
         }
 
@@ -91,7 +91,7 @@ public struct XMLDocument: Sendable {
             // libxml2 expects a C char buffer; we pass bytes and length.
             let bufferPointer = baseAddress.assumingMemoryBound(to: CChar.self)
 
-            if let sourceURL {
+            if let sourceURL = sourceURL {
                 return sourceURL.absoluteString.withCString { urlCString in
                     xmlReadMemory(bufferPointer, Int32(rawBuffer.count), urlCString, nil, options)
                 }
@@ -100,11 +100,11 @@ public struct XMLDocument: Sendable {
             }
         }
 
-        guard let documentPointer else {
+        guard let documentPointer = documentPointer else {
             // Best-effort: attempt to read libxml2's last error.
             let lastErrorPointer = xmlGetLastError()
             let message: String?
-            if let lastErrorPointer, let errorMessagePointer = lastErrorPointer.pointee.message {
+            if let lastErrorPointer = lastErrorPointer, let errorMessagePointer = lastErrorPointer.pointee.message {
                 message = String(cString: errorMessagePointer).trimmingCharacters(in: .whitespacesAndNewlines)
             } else {
                 message = nil
@@ -142,7 +142,7 @@ public struct XMLDocument: Sendable {
         ])
 
         let contextPointer = xmlXPathNewContext(documentPointer)
-        guard let contextPointer else {
+        guard let contextPointer = contextPointer else {
             throw XMLParsingError.xpathFailed(expression: expression, message: "Unable to create XPath context.")
         }
         defer { xmlXPathFreeContext(contextPointer) }
@@ -152,10 +152,10 @@ public struct XMLDocument: Sendable {
         let resultPointer = LibXML2.withXMLCharPointer(expression) { expressionPointer in
             xmlXPathEvalExpression(expressionPointer, contextPointer)
         }
-        guard let resultPointer else {
+        guard let resultPointer = resultPointer else {
             let lastErrorPointer = xmlGetLastError()
             let message: String?
-            if let lastErrorPointer, let errorMessagePointer = lastErrorPointer.pointee.message {
+            if let lastErrorPointer = lastErrorPointer, let errorMessagePointer = lastErrorPointer.pointee.message {
                 message = String(cString: errorMessagePointer).trimmingCharacters(in: .whitespacesAndNewlines)
             } else {
                 message = nil
@@ -189,7 +189,7 @@ public struct XMLDocument: Sendable {
         }
 
         let contextPointer = xmlXPathNewContext(documentPointer)
-        guard let contextPointer else {
+        guard let contextPointer = contextPointer else {
             throw XMLParsingError.xpathFailed(expression: expression, message: "Unable to create XPath context.")
         }
         defer { xmlXPathFreeContext(contextPointer) }
@@ -199,10 +199,10 @@ public struct XMLDocument: Sendable {
         let resultPointer = LibXML2.withXMLCharPointer(expression) { expressionPointer in
             xmlXPathEvalExpression(expressionPointer, contextPointer)
         }
-        guard let resultPointer else {
+        guard let resultPointer = resultPointer else {
             let lastErrorPointer = xmlGetLastError()
             let message: String?
-            if let lastErrorPointer, let errorMessagePointer = lastErrorPointer.pointee.message {
+            if let lastErrorPointer = lastErrorPointer, let errorMessagePointer = lastErrorPointer.pointee.message {
                 message = String(cString: errorMessagePointer).trimmingCharacters(in: .whitespacesAndNewlines)
             } else {
                 message = nil
@@ -241,10 +241,10 @@ public struct XMLDocument: Sendable {
             xmlDocDumpFormatMemoryEnc(documentPointer, &bufferPointer, &size, encodingCString, format)
         }
 
-        guard let bufferPointer, size >= 0 else {
+        guard let bufferPointer = bufferPointer, size >= 0 else {
             let lastErrorPointer = xmlGetLastError()
             let message: String?
-            if let lastErrorPointer, let errorMessagePointer = lastErrorPointer.pointee.message {
+            if let lastErrorPointer = lastErrorPointer, let errorMessagePointer = lastErrorPointer.pointee.message {
                 message = String(cString: errorMessagePointer).trimmingCharacters(in: .whitespacesAndNewlines)
             } else {
                 message = nil
@@ -292,17 +292,17 @@ public struct XMLDocument: Sendable {
             xmlNewNode(nil, namePointer)
         }
 
-        guard let nodePointer else {
+        guard let nodePointer = nodePointer else {
             return nil
         }
 
-        if let namespace {
+        if let namespace = namespace {
             if namespace.prefix != nil && namespace.uri.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 xmlFreeNode(nodePointer)
                 throw XMLParsingError.invalidNamespaceConfiguration(prefix: namespace.prefix, uri: namespace.uri)
             }
 
-            let namespacePointer = LibXML2.withXMLCharPointer(namespace.uri) { uriPointer in
+            let namespacePointer = LibXML2.withXMLCharPointer(namespace.uri) { uriPointer -> xmlNsPtr? in
                 if let prefix = namespace.prefix {
                     return LibXML2.withXMLCharPointer(prefix) { prefixPointer in
                         xmlNewNs(nodePointer, uriPointer, prefixPointer)
@@ -312,7 +312,7 @@ public struct XMLDocument: Sendable {
                 }
             }
 
-            guard let namespacePointer else {
+            guard let namespacePointer = namespacePointer else {
                 xmlFreeNode(nodePointer)
                 throw XMLParsingError.nodeOperationFailed(
                     message: "Unable to assign namespace '\(namespace.uri)' to element '\(name)'."

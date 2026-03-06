@@ -56,7 +56,7 @@ private actor StubSOAPServerTransport: SOAPServerTransport {
     }
 
     func handle(_ requestXMLData: Data) async throws -> Data {
-        guard let handler else {
+        guard let handler = handler else {
             throw SOAPCoreError.invalidBodyConfiguration(message: "Handler was not configured.")
         }
         return try await handler(requestXMLData)
