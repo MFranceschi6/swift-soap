@@ -1,5 +1,6 @@
 import Foundation
 import SwiftSOAPCompatibility
+import SwiftSOAPXMLCShim
 
 enum LibXML2 {
     static let initializeOnce: Void = {
@@ -19,5 +20,19 @@ enum LibXML2 {
         return try bytes.withUnsafeBufferPointer { buffer in
             try body(buffer.baseAddress)
         }
+    }
+
+    static func withOwnedXMLCharPointer<Result>(
+        _ pointer: UnsafeMutablePointer<xmlChar>?,
+        _ body: (UnsafeMutablePointer<xmlChar>) throws -> Result
+    ) rethrows -> Result? {
+        guard let pointer = pointer else {
+            return nil
+        }
+
+        defer {
+            swiftsoap_xml_free_xml_char(pointer)
+        }
+        return try body(pointer)
     }
 }

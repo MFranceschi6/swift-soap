@@ -1,6 +1,5 @@
 import Foundation
 import SwiftSOAPCompatibility
-import SwiftSOAPXMLCShim
 
 public struct XMLNode {
     fileprivate let nodePointer: xmlNodePtr
@@ -37,22 +36,18 @@ public struct XMLNode {
     }
 
     public func text() -> String? {
-        guard let contentPointer = xmlNodeGetContent(nodePointer) else {
-            return nil
+        return LibXML2.withOwnedXMLCharPointer(xmlNodeGetContent(nodePointer)) { contentPointer in
+            String(cString: UnsafePointer<CChar>(OpaquePointer(contentPointer)))
         }
-        defer { swiftsoap_xml_free_xml_char(contentPointer) }
-        return String(cString: UnsafePointer<CChar>(OpaquePointer(contentPointer)))
     }
 
     public func attribute(named attributeName: String) -> String? {
         LibXML2.ensureInitialized()
 
         return LibXML2.withXMLCharPointer(attributeName) { attributeNamePointer in
-            guard let valuePointer = xmlGetProp(nodePointer, attributeNamePointer) else {
-                return nil
+            LibXML2.withOwnedXMLCharPointer(xmlGetProp(nodePointer, attributeNamePointer)) { valuePointer in
+                String(cString: UnsafePointer<CChar>(OpaquePointer(valuePointer)))
             }
-            defer { swiftsoap_xml_free_xml_char(valuePointer) }
-            return String(cString: UnsafePointer<CChar>(OpaquePointer(valuePointer)))
         }
     }
 
