@@ -21,6 +21,73 @@ public struct XMLDocument: Sendable {
     private let storage: Storage
     private let logger: Logger
 
+    #if swift(>=6.0)
+    public init(rootElementName: String, logger: Logger? = nil) throws(XMLParsingError) {
+        do {
+            try self.init(createDocument: rootElementName, rootNamespace: nil, logger: logger ?? Self.defaultLogger())
+        } catch let error as XMLParsingError {
+            throw error
+        } catch {
+            throw XMLParsingError.other(underlyingError: error, message: "Unexpected XML document creation error.")
+        }
+    }
+
+    public init(rootElementName: String, rootNamespace: XMLNamespace, logger: Logger? = nil) throws(XMLParsingError) {
+        do {
+            try self.init(
+                createDocument: rootElementName,
+                rootNamespace: rootNamespace as XMLNamespace?,
+                logger: logger ?? Self.defaultLogger()
+            )
+        } catch let error as XMLParsingError {
+            throw error
+        } catch {
+            throw XMLParsingError.other(underlyingError: error, message: "Unexpected XML document creation error.")
+        }
+    }
+
+    public init(data: Data, logger: Logger? = nil) throws(XMLParsingError) {
+        do {
+            try self.init(parseDocument: data, sourceURL: nil, logger: logger ?? Self.defaultLogger())
+        } catch let error as XMLParsingError {
+            throw error
+        } catch {
+            throw XMLParsingError.other(underlyingError: error, message: "Unexpected XML parsing error.")
+        }
+    }
+
+    public init(data: Data, sourceURL: URL, logger: Logger? = nil) throws(XMLParsingError) {
+        do {
+            try self.init(parseDocument: data, sourceURL: sourceURL, logger: logger ?? Self.defaultLogger())
+        } catch let error as XMLParsingError {
+            throw error
+        } catch {
+            throw XMLParsingError.other(underlyingError: error, message: "Unexpected XML parsing error.")
+        }
+    }
+
+    public init(url: URL, logger: Logger? = nil) throws(XMLParsingError) {
+        let effectiveLogger: Logger = logger ?? Self.defaultLogger()
+
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            throw XMLParsingError.other(
+                underlyingError: error,
+                message: "Unable to load XML data from URL '\(url.absoluteString)'."
+            )
+        }
+
+        do {
+            try self.init(parseDocument: data, sourceURL: url, logger: effectiveLogger)
+        } catch let error as XMLParsingError {
+            throw error
+        } catch {
+            throw XMLParsingError.other(underlyingError: error, message: "Unexpected XML parsing error.")
+        }
+    }
+    #else
     public init(rootElementName: String, logger: Logger? = nil) throws {
         try self.init(createDocument: rootElementName, rootNamespace: nil, logger: logger ?? Self.defaultLogger())
     }
@@ -55,6 +122,7 @@ public struct XMLDocument: Sendable {
         }
         try self.init(parseDocument: data, sourceURL: url, logger: effectiveLogger)
     }
+    #endif
 
     private init(createDocument rootElementName: String, rootNamespace: XMLNamespace?, logger: Logger) throws {
         LibXML2.ensureInitialized()
