@@ -24,6 +24,19 @@ public struct SOAPEnvelope<BodyPayload: SOAPBodyPayload, HeaderPayload: SOAPHead
         self.body = body
     }
 
+    #if swift(>=6.0)
+    public init(
+        namespaceURI: String = SOAPEnvelope.soap11NamespaceURI,
+        header: SOAPHeader<HeaderPayload>? = nil,
+        body: SOAPBody<BodyPayload, FaultDetailPayload>
+    ) throws(SOAPCoreError) {
+        try self.init(
+            namespace: SOAPEnvelopeNamespace(uri: namespaceURI),
+            header: header,
+            body: body
+        )
+    }
+    #else
     public init(
         namespaceURI: String = SOAPEnvelope.soap11NamespaceURI,
         header: SOAPHeader<HeaderPayload>? = nil,
@@ -35,6 +48,7 @@ public struct SOAPEnvelope<BodyPayload: SOAPBodyPayload, HeaderPayload: SOAPHead
             body: body
         )
     }
+    #endif
 
     public init(
         payload: BodyPayload,
@@ -44,6 +58,19 @@ public struct SOAPEnvelope<BodyPayload: SOAPBodyPayload, HeaderPayload: SOAPHead
         self.init(namespace: namespace, header: header, body: .init(payload: payload))
     }
 
+    #if swift(>=6.0)
+    public init(
+        payload: BodyPayload,
+        namespaceURI: String,
+        header: SOAPHeader<HeaderPayload>? = nil
+    ) throws(SOAPCoreError) {
+        try self.init(
+            namespace: SOAPEnvelopeNamespace(uri: namespaceURI),
+            header: header,
+            body: .init(payload: payload)
+        )
+    }
+    #else
     public init(
         payload: BodyPayload,
         namespaceURI: String,
@@ -55,6 +82,7 @@ public struct SOAPEnvelope<BodyPayload: SOAPBodyPayload, HeaderPayload: SOAPHead
             body: .init(payload: payload)
         )
     }
+    #endif
 
     public init(
         fault: SOAPFault<FaultDetailPayload>,
@@ -64,6 +92,19 @@ public struct SOAPEnvelope<BodyPayload: SOAPBodyPayload, HeaderPayload: SOAPHead
         self.init(namespace: namespace, header: header, body: .init(fault: fault))
     }
 
+    #if swift(>=6.0)
+    public init(
+        fault: SOAPFault<FaultDetailPayload>,
+        namespaceURI: String,
+        header: SOAPHeader<HeaderPayload>? = nil
+    ) throws(SOAPCoreError) {
+        try self.init(
+            namespace: SOAPEnvelopeNamespace(uri: namespaceURI),
+            header: header,
+            body: .init(fault: fault)
+        )
+    }
+    #else
     public init(
         fault: SOAPFault<FaultDetailPayload>,
         namespaceURI: String,
@@ -75,6 +116,7 @@ public struct SOAPEnvelope<BodyPayload: SOAPBodyPayload, HeaderPayload: SOAPHead
             body: .init(fault: fault)
         )
     }
+    #endif
 }
 
 extension SOAPEnvelope: Equatable where

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftSOAPCompatibility
 
 public enum XMLParsingError: Error {
     case invalidUTF8
@@ -8,5 +9,5 @@ public enum XMLParsingError: Error {
     case nodeCreationFailed(name: String, message: String?)
     case invalidNamespaceConfiguration(prefix: String?, uri: String?)
     case nodeOperationFailed(message: String?)
-    case other(underlyingError: Error?, message: String?)
+    case other(underlyingError: SOAPAnyError?, message: String?)
 }

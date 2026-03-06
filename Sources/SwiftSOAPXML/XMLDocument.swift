@@ -1,6 +1,6 @@
-@preconcurrency import CLibXML2
 import Foundation
 import Logging
+@preconcurrency import SwiftSOAPCompatibility
 
 public struct XMLDocument: Sendable {
     private final class Storage: @unchecked Sendable {
@@ -129,7 +129,29 @@ public struct XMLDocument: Sendable {
         return XMLNode(nodePointer: nodePointer)
     }
 
+    #if swift(>=6.0)
     public func xpathFirstNode(
+        _ expression: String,
+        namespaces: [String: String] = [:]
+    ) throws(XMLParsingError) -> XMLNode? {
+        do {
+            return try xpathFirstNodeImpl(expression, namespaces: namespaces)
+        } catch let error as XMLParsingError {
+            throw error
+        } catch {
+            throw XMLParsingError.other(underlyingError: error, message: "Unexpected XPath evaluation error.")
+        }
+    }
+    #else
+    public func xpathFirstNode(
+        _ expression: String,
+        namespaces: [String: String] = [:]
+    ) throws -> XMLNode? {
+        try xpathFirstNodeImpl(expression, namespaces: namespaces)
+    }
+    #endif
+
+    private func xpathFirstNodeImpl(
         _ expression: String,
         namespaces: [String: String] = [:]
     ) throws -> XMLNode? {
@@ -180,7 +202,29 @@ public struct XMLDocument: Sendable {
         return XMLNode(nodePointer: nodePointer)
     }
 
+    #if swift(>=6.0)
     public func xpathNodes(
+        _ expression: String,
+        namespaces: [String: String] = [:]
+    ) throws(XMLParsingError) -> [XMLNode] {
+        do {
+            return try xpathNodesImpl(expression, namespaces: namespaces)
+        } catch let error as XMLParsingError {
+            throw error
+        } catch {
+            throw XMLParsingError.other(underlyingError: error, message: "Unexpected XPath evaluation error.")
+        }
+    }
+    #else
+    public func xpathNodes(
+        _ expression: String,
+        namespaces: [String: String] = [:]
+    ) throws -> [XMLNode] {
+        try xpathNodesImpl(expression, namespaces: namespaces)
+    }
+    #endif
+
+    private func xpathNodesImpl(
         _ expression: String,
         namespaces: [String: String] = [:]
     ) throws -> [XMLNode] {
@@ -228,7 +272,23 @@ public struct XMLDocument: Sendable {
         }
     }
 
+    #if swift(>=6.0)
+    public func serializedData(encoding: String = "UTF-8", prettyPrinted: Bool = false) throws(XMLParsingError) -> Data {
+        do {
+            return try serializedDataImpl(encoding: encoding, prettyPrinted: prettyPrinted)
+        } catch let error as XMLParsingError {
+            throw error
+        } catch {
+            throw XMLParsingError.other(underlyingError: error, message: "Unexpected XML serialization error.")
+        }
+    }
+    #else
     public func serializedData(encoding: String = "UTF-8", prettyPrinted: Bool = false) throws -> Data {
+        try serializedDataImpl(encoding: encoding, prettyPrinted: prettyPrinted)
+    }
+    #endif
+
+    private func serializedDataImpl(encoding: String = "UTF-8", prettyPrinted: Bool = false) throws -> Data {
         guard let documentPointer = storage.documentPointer else {
             return Data()
         }
@@ -256,14 +316,46 @@ public struct XMLDocument: Sendable {
         return Data(bytes: bufferPointer, count: Int(size))
     }
 
+    #if swift(>=6.0)
+    public func createElement(named name: String, namespace: XMLNamespace? = nil) throws(XMLParsingError) -> XMLNode {
+        do {
+            return try createElementImpl(named: name, namespace: namespace)
+        } catch let error as XMLParsingError {
+            throw error
+        } catch {
+            throw XMLParsingError.other(underlyingError: error, message: "Unexpected XML node creation error.")
+        }
+    }
+    #else
     public func createElement(named name: String, namespace: XMLNamespace? = nil) throws -> XMLNode {
+        try createElementImpl(named: name, namespace: namespace)
+    }
+    #endif
+
+    private func createElementImpl(named name: String, namespace: XMLNamespace? = nil) throws -> XMLNode {
         guard let nodePointer = try XMLDocument.makeNode(named: name, namespace: namespace) else {
             throw XMLParsingError.nodeCreationFailed(name: name, message: "Unable to create XML element.")
         }
         return XMLNode(nodePointer: nodePointer)
     }
 
+    #if swift(>=6.0)
+    public func appendChild(_ child: XMLNode, to parent: XMLNode) throws(XMLParsingError) {
+        do {
+            try appendChildImpl(child, to: parent)
+        } catch let error as XMLParsingError {
+            throw error
+        } catch {
+            throw XMLParsingError.other(underlyingError: error, message: "Unexpected XML child append error.")
+        }
+    }
+    #else
     public func appendChild(_ child: XMLNode, to parent: XMLNode) throws {
+        try appendChildImpl(child, to: parent)
+    }
+    #endif
+
+    private func appendChildImpl(_ child: XMLNode, to parent: XMLNode) throws {
         try parent.addChild(child)
     }
 
