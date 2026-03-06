@@ -14,9 +14,13 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-14, ubuntu-22.04]
-        # Swift 5.6 is the minimum version in Package.swift (swift-tools-version: 5.6)
-        # Swift 6.2 is the latest reference version
+        # Swift 5.10 is the quality baseline and Swift 6.2 is the latest reference version.
         swift-version: ["5.10", "6.2"]
+        # Temporary: exclude macOS + Swift 6.2 due upstream swift-nio/NIOEmbedded
+        # strict-concurrency compilation failure in dependency sources.
+        exclude:
+          - os: macos-14
+            swift-version: "6.2"
 
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +29,6 @@ jobs:
         uses: swift-actions/setup-swift@v2
         with:
           swift-version: ${{ matrix.swift-version }}
-          skip-verify-signature: true
 
       - name: Install System Dependencies (Linux)
         if: runner.os == 'Linux'
@@ -48,7 +51,7 @@ jobs:
         run: swift build -c debug
 
       - name: Run Tests (with Code Coverage)
-        run: swift test --enable-code-coverage
+        run: swift test --enable-code-coverage --parallel --num-workers 1
 
       - name: Enforce Code Coverage (>= 90%)
         run: |
