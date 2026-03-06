@@ -33,6 +33,11 @@ let package = Package(
             dependencies: ["CLibXML2"]
         ),
         .target(
+            name: "SwiftSOAPXMLCShim",
+            dependencies: ["CLibXML2"],
+            publicHeadersPath: "include"
+        ),
+        .target(
             name: "SwiftSOAPCore",
             dependencies: [
                 "SwiftSOAPCompatibility",
@@ -66,6 +71,7 @@ let package = Package(
             name: "SwiftSOAPXML",
             dependencies: [
                 "SwiftSOAPCompatibility",
+                "SwiftSOAPXMLCShim",
                 .product(name: "Logging", package: "swift-log")
             ]
         ),

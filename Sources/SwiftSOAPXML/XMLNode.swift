@@ -1,5 +1,6 @@
 import Foundation
-@preconcurrency import SwiftSOAPCompatibility
+import SwiftSOAPCompatibility
+import SwiftSOAPXMLCShim
 
 public struct XMLNode {
     fileprivate let nodePointer: xmlNodePtr
@@ -39,7 +40,7 @@ public struct XMLNode {
         guard let contentPointer = xmlNodeGetContent(nodePointer) else {
             return nil
         }
-        defer { xmlFree(contentPointer) }
+        defer { swiftsoap_xml_free_xml_char(contentPointer) }
         return String(cString: UnsafePointer<CChar>(OpaquePointer(contentPointer)))
     }
 
@@ -50,7 +51,7 @@ public struct XMLNode {
             guard let valuePointer = xmlGetProp(nodePointer, attributeNamePointer) else {
                 return nil
             }
-            defer { xmlFree(valuePointer) }
+            defer { swiftsoap_xml_free_xml_char(valuePointer) }
             return String(cString: UnsafePointer<CChar>(OpaquePointer(valuePointer)))
         }
     }
