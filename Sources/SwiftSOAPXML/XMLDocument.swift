@@ -1,20 +1,17 @@
 import Foundation
 import Logging
 import SwiftSOAPCompatibility
-import SwiftSOAPXMLCShim
 
 public struct XMLDocument: Sendable {
     private final class Storage: @unchecked Sendable {
-        var documentPointer: xmlDocPtr?
+        let documentPointer: xmlDocPtr
 
-        init(documentPointer: xmlDocPtr?) {
+        init(documentPointer: xmlDocPtr) {
             self.documentPointer = documentPointer
         }
 
         deinit {
-            if let documentPointer = documentPointer {
-                xmlFreeDoc(documentPointer)
-            }
+            xmlFreeDoc(documentPointer)
         }
     }
 
@@ -189,10 +186,7 @@ public struct XMLDocument: Sendable {
     }
 
     public func rootElement() -> XMLNode? {
-        guard let documentPointer = storage.documentPointer else {
-            return nil
-        }
-        guard let nodePointer = xmlDocGetRootElement(documentPointer) else {
+        guard let nodePointer = xmlDocGetRootElement(storage.documentPointer) else {
             return nil
         }
         return XMLNode(nodePointer: nodePointer)
@@ -224,15 +218,11 @@ public struct XMLDocument: Sendable {
         _ expression: String,
         namespaces: [String: String] = [:]
     ) throws -> XMLNode? {
-        guard let documentPointer = storage.documentPointer else {
-            return nil
-        }
-
         logger.trace("Evaluating XPath expression", metadata: [
             "expression": "\(expression)"
         ])
 
-        let contextPointer = xmlXPathNewContext(documentPointer)
+        let contextPointer = xmlXPathNewContext(storage.documentPointer)
         guard let contextPointer = contextPointer else {
             throw XMLParsingError.xpathFailed(expression: expression, message: "Unable to create XPath context.")
         }
@@ -297,11 +287,7 @@ public struct XMLDocument: Sendable {
         _ expression: String,
         namespaces: [String: String] = [:]
     ) throws -> [XMLNode] {
-        guard let documentPointer = storage.documentPointer else {
-            return []
-        }
-
-        let contextPointer = xmlXPathNewContext(documentPointer)
+        let contextPointer = xmlXPathNewContext(storage.documentPointer)
         guard let contextPointer = contextPointer else {
             throw XMLParsingError.xpathFailed(expression: expression, message: "Unable to create XPath context.")
         }
@@ -358,16 +344,12 @@ public struct XMLDocument: Sendable {
     #endif
 
     private func serializedDataImpl(encoding: String = "UTF-8", prettyPrinted: Bool = false) throws -> Data {
-        guard let documentPointer = storage.documentPointer else {
-            return Data()
-        }
-
         var bufferPointer: UnsafeMutablePointer<xmlChar>?
         var size: Int32 = 0
         let format: Int32 = prettyPrinted ? 1 : 0
 
         encoding.withCString { encodingCString in
-            xmlDocDumpFormatMemoryEnc(documentPointer, &bufferPointer, &size, encodingCString, format)
+            xmlDocDumpFormatMemoryEnc(storage.documentPointer, &bufferPointer, &size, encodingCString, format)
         }
 
         guard let bufferPointer = bufferPointer, size >= 0 else {
@@ -381,8 +363,13 @@ public struct XMLDocument: Sendable {
             throw XMLParsingError.other(underlyingError: nil, message: message ?? "XML serialization failed.")
         }
 
-        defer { swiftsoap_xml_free_xml_char(bufferPointer) }
-        return Data(bytes: bufferPointer, count: Int(size))
+        let serializedData = LibXML2.withOwnedXMLCharPointer(bufferPointer, { pointer in
+            Data(bytes: pointer, count: Int(size))
+        })
+        guard let serializedData = serializedData else {
+            throw XMLParsingError.other(underlyingError: nil, message: "XML serialization failed.")
+        }
+        return serializedData
     }
 
     #if swift(>=6.0)

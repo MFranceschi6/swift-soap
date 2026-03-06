@@ -42,6 +42,9 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - `quality-5.10` and `latest` run test coverage commands with serialized workers.
 - Improved XML runtime safety for invalid tree mutations:
   - `XMLNode.addChild(_:)` now rejects self-child and ancestor-child insertions before calling libxml2 to prevent cycle-related undefined behavior.
+- Hardened XML ownership internals in preparation for deeper Swift 6 ownership work:
+  - centralized `xmlChar*` lifetime management in `LibXML2.withOwnedXMLCharPointer(...)`;
+  - strengthened `XMLDocument` storage invariants by making the owned `xmlDocPtr` non-optional.
 - Backported source compatibility for Swift 5.6 parsing/type-checking in XML/core tests:
   - replaced shorthand optional-binding syntax with Swift 5.6-compatible forms where needed;
   - added explicit closure return types in libxml namespace helper paths.
