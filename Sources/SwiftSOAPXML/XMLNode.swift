@@ -1,5 +1,5 @@
-@preconcurrency import CLibXML2
 import Foundation
+@preconcurrency import SwiftSOAPCompatibility
 
 public struct XMLNode {
     fileprivate let nodePointer: xmlNodePtr
@@ -77,6 +77,21 @@ public struct XMLNode {
         }
     }
 
+    #if swift(>=6.0)
+    public func setAttribute(named attributeName: String, value: String) throws(XMLParsingError) {
+        let result = LibXML2.withXMLCharPointer(attributeName) { attributeNamePointer in
+            LibXML2.withXMLCharPointer(value) { valuePointer in
+                xmlSetProp(nodePointer, attributeNamePointer, valuePointer)
+            }
+        }
+
+        guard result != nil else {
+            throw XMLParsingError.nodeOperationFailed(
+                message: "Unable to set attribute '\(attributeName)' on node '\(name ?? "<unknown>")'."
+            )
+        }
+    }
+    #else
     public func setAttribute(named attributeName: String, value: String) throws {
         let result = LibXML2.withXMLCharPointer(attributeName) { attributeNamePointer in
             LibXML2.withXMLCharPointer(value) { valuePointer in
@@ -90,7 +105,33 @@ public struct XMLNode {
             )
         }
     }
+    #endif
 
+    #if swift(>=6.0)
+    public func addNamespace(_ namespace: XMLNamespace) throws(XMLParsingError) {
+        if namespace.prefix != nil && namespace.uri.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw XMLParsingError.invalidNamespaceConfiguration(prefix: namespace.prefix, uri: namespace.uri)
+        }
+
+        let namespacePointer = LibXML2.withXMLCharPointer(namespace.uri) { uriPointer -> xmlNsPtr? in
+            if let prefix = namespace.prefix {
+                return LibXML2.withXMLCharPointer(prefix) { prefixPointer in
+                    xmlNewNs(nodePointer, uriPointer, prefixPointer)
+                }
+            } else {
+                return xmlNewNs(nodePointer, uriPointer, nil)
+            }
+        }
+
+        guard let namespacePointer = namespacePointer else {
+            throw XMLParsingError.nodeOperationFailed(
+                message: "Unable to add namespace '\(namespace.uri)' to node '\(name ?? "<unknown>")'."
+            )
+        }
+
+        xmlSetNs(nodePointer, namespacePointer)
+    }
+    #else
     public func addNamespace(_ namespace: XMLNamespace) throws {
         if namespace.prefix != nil && namespace.uri.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             throw XMLParsingError.invalidNamespaceConfiguration(prefix: namespace.prefix, uri: namespace.uri)
@@ -114,7 +155,41 @@ public struct XMLNode {
 
         xmlSetNs(nodePointer, namespacePointer)
     }
+    #endif
 
+    #if swift(>=6.0)
+    public func addChild(_ child: XMLNode) throws(XMLParsingError) {
+        if child.nodePointer == nodePointer {
+            throw XMLParsingError.nodeOperationFailed(
+                message: "Unable to append a node as a child of itself."
+            )
+        }
+
+        var ancestorPointer = nodePointer.pointee.parent
+        while let currentAncestor = ancestorPointer {
+            if currentAncestor == child.nodePointer {
+                throw XMLParsingError.nodeOperationFailed(
+                    message: "Unable to append an ancestor node as child, would create a cycle."
+                )
+            }
+            ancestorPointer = currentAncestor.pointee.parent
+        }
+
+        let parentDocument = nodePointer.pointee.doc
+        let childDocument = child.nodePointer.pointee.doc
+        if let parentDocument = parentDocument, let childDocument = childDocument, parentDocument != childDocument {
+            throw XMLParsingError.nodeOperationFailed(
+                message: "Unable to append child from a different XML document."
+            )
+        }
+
+        guard xmlAddChild(nodePointer, child.nodePointer) != nil else {
+            throw XMLParsingError.nodeOperationFailed(
+                message: "Unable to append child '\(child.name ?? "<unknown>")' to node '\(name ?? "<unknown>")'."
+            )
+        }
+    }
+    #else
     public func addChild(_ child: XMLNode) throws {
         if child.nodePointer == nodePointer {
             throw XMLParsingError.nodeOperationFailed(
@@ -146,4 +221,5 @@ public struct XMLNode {
             )
         }
     }
+    #endif
 }

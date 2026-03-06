@@ -1,5 +1,5 @@
-@preconcurrency import CLibXML2
 import Foundation
+@preconcurrency import SwiftSOAPCompatibility
 
 enum LibXML2 {
     static let initializeOnce: Void = {

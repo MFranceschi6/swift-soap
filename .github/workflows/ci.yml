@@ -51,7 +51,7 @@ jobs:
         run: swift build -c debug
 
       - name: Run Tests (with Code Coverage)
-        run: swift test --enable-code-coverage --parallel --num-workers 1
+        run: swift test --enable-code-coverage --jobs 1 --parallel --num-workers 1
 
       - name: Enforce Code Coverage (>= 90%)
         run: |

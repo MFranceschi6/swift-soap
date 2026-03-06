@@ -10,6 +10,34 @@ public enum SOAPFaultCode: Sendable, Equatable {
     case dataEncodingUnknown
     case custom(String)
 
+    #if swift(>=6.0)
+    public init(rawValue: String) throws(SOAPCoreError) {
+        let cleanedRawValue = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedRawValue.isEmpty else {
+            throw SOAPCoreError.invalidFault(message: "Fault code cannot be empty.")
+        }
+
+        let lookupToken = SOAPFaultCode.lookupToken(from: cleanedRawValue)
+        switch lookupToken {
+        case "versionmismatch":
+            self = .versionMismatch
+        case "mustunderstand":
+            self = .mustUnderstand
+        case "client":
+            self = .client
+        case "server":
+            self = .server
+        case "sender":
+            self = .sender
+        case "receiver":
+            self = .receiver
+        case "dataencodingunknown":
+            self = .dataEncodingUnknown
+        default:
+            self = .custom(cleanedRawValue)
+        }
+    }
+    #else
     public init(rawValue: String) throws {
         let cleanedRawValue = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanedRawValue.isEmpty else {
@@ -36,6 +64,7 @@ public enum SOAPFaultCode: Sendable, Equatable {
             self = .custom(cleanedRawValue)
         }
     }
+    #endif
 
     public var rawValue: String {
         switch self {

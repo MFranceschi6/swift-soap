@@ -29,8 +29,13 @@ let package = Package(
             ]
         ),
         .target(
+            name: "SwiftSOAPCompatibility",
+            dependencies: ["CLibXML2"]
+        ),
+        .target(
             name: "SwiftSOAPCore",
             dependencies: [
+                "SwiftSOAPCompatibility",
                 "SwiftSOAPXML",
                 .product(name: "Logging", package: "swift-log")
             ]
@@ -60,7 +65,7 @@ let package = Package(
         .target(
             name: "SwiftSOAPXML",
             dependencies: [
-                "CLibXML2",
+                "SwiftSOAPCompatibility",
                 .product(name: "Logging", package: "swift-log")
             ]
         ),
