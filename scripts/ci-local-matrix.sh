@@ -48,17 +48,17 @@ run_lane \
 run_lane \
   "tooling-5.6-plus" \
   "swift:5.6" \
-  "swift build --scratch-path /tmp/swiftpm-tooling-56 -c debug" \
+  "swift build -c debug --jobs 1 && swift test --jobs 1 --parallel --num-workers 1" \
   "linux/amd64"
 
 run_lane \
   "quality-5.10" \
   "swift:5.10" \
-  "swift test --scratch-path /tmp/swiftpm-quality-510 --enable-code-coverage"
+  "swift test --scratch-path /tmp/swiftpm-quality-510 --enable-code-coverage --parallel --num-workers 1"
 
 run_lane \
   "latest" \
   "swift:6.2" \
-  "swift test --scratch-path /tmp/swiftpm-latest --enable-code-coverage"
+  "swift test --scratch-path /tmp/swiftpm-latest --enable-code-coverage --parallel --num-workers 1"
 
 printf 'Local matrix completed: runtime-5.4, tooling-5.6-plus, quality-5.10, latest\n'

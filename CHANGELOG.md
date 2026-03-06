@@ -28,6 +28,21 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - `SwiftSOAPServerNIOTests`.
 
 ### Changed
+- Enabled Swift 6 language mode in the latest manifest lane:
+  - `Package@swift-6.0.swift` now uses `swiftLanguageModes: [.v6]`.
+- Hardened compatibility lane execution for deterministic test behavior on Linux:
+  - `tooling-5.6+` now runs both build and tests in CI.
+  - compatibility lanes use explicit single-worker test execution (`--parallel --num-workers 1`) where required to reduce flaky hangs.
+- Updated the local compatibility matrix script to align lane behavior with CI expectations:
+  - `runtime-5.4` remains smoke (`swift package describe`),
+  - `tooling-5.6+` runs build+test,
+  - `quality-5.10` and `latest` run test coverage commands with serialized workers.
+- Improved XML runtime safety for invalid tree mutations:
+  - `XMLNode.addChild(_:)` now rejects self-child and ancestor-child insertions before calling libxml2 to prevent cycle-related undefined behavior.
+- Backported source compatibility for Swift 5.6 parsing/type-checking in XML/core tests:
+  - replaced shorthand optional-binding syntax with Swift 5.6-compatible forms where needed;
+  - added explicit closure return types in libxml namespace helper paths.
+
 - Upgraded the compatibility workflow from skeleton placeholders to lane-based executable checks:
   - `runtime-5.4` uses a legacy manifest smoke validation strategy in Docker (`swift:5.4`);
   - `tooling-5.6+` runs real build checks with Swift 5.6;

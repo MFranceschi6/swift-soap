@@ -1,4 +1,4 @@
-import CLibXML2
+@preconcurrency import CLibXML2
 import Foundation
 
 enum LibXML2 {

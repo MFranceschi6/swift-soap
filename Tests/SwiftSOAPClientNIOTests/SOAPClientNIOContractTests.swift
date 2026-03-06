@@ -6,20 +6,19 @@ import SwiftSOAPCore
 import XCTest
 
 final class SOAPClientNIOContractTests: XCTestCase {
-    func test_invoke_returnsTypedSuccessResponseOnEventLoop() throws {
+    func test_invoke_returnsTypedSuccessResponseOnEventLoop() async throws {
         let eventLoop = EmbeddedEventLoop()
         let client = StubSOAPClientNIO()
         let endpointURL = try XCTUnwrap(URL(string: "https://example.com/soap"))
         let request = PingRequestPayload(message: "ping")
 
-        let future = client.invoke(
+        let response = try await client.invoke(
             PingOperationContract.self,
             request: request,
             endpointURL: endpointURL,
             on: eventLoop
-        )
+        ).get()
 
-        let response = try future.wait()
         switch response {
         case .success(let payload):
             XCTAssertEqual(payload.message, "pong")

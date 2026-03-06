@@ -1,4 +1,4 @@
-import CLibXML2
+@preconcurrency import CLibXML2
 import Foundation
 
 public struct XMLNode {
@@ -96,7 +96,7 @@ public struct XMLNode {
             throw XMLParsingError.invalidNamespaceConfiguration(prefix: namespace.prefix, uri: namespace.uri)
         }
 
-        let namespacePointer = LibXML2.withXMLCharPointer(namespace.uri) { uriPointer in
+        let namespacePointer = LibXML2.withXMLCharPointer(namespace.uri) { uriPointer -> xmlNsPtr? in
             if let prefix = namespace.prefix {
                 return LibXML2.withXMLCharPointer(prefix) { prefixPointer in
                     xmlNewNs(nodePointer, uriPointer, prefixPointer)
@@ -106,7 +106,7 @@ public struct XMLNode {
             }
         }
 
-        guard let namespacePointer else {
+        guard let namespacePointer = namespacePointer else {
             throw XMLParsingError.nodeOperationFailed(
                 message: "Unable to add namespace '\(namespace.uri)' to node '\(name ?? "<unknown>")'."
             )
@@ -116,9 +116,25 @@ public struct XMLNode {
     }
 
     public func addChild(_ child: XMLNode) throws {
+        if child.nodePointer == nodePointer {
+            throw XMLParsingError.nodeOperationFailed(
+                message: "Unable to append a node as a child of itself."
+            )
+        }
+
+        var ancestorPointer = nodePointer.pointee.parent
+        while let currentAncestor = ancestorPointer {
+            if currentAncestor == child.nodePointer {
+                throw XMLParsingError.nodeOperationFailed(
+                    message: "Unable to append an ancestor node as child, would create a cycle."
+                )
+            }
+            ancestorPointer = currentAncestor.pointee.parent
+        }
+
         let parentDocument = nodePointer.pointee.doc
         let childDocument = child.nodePointer.pointee.doc
-        if let parentDocument, let childDocument, parentDocument != childDocument {
+        if let parentDocument = parentDocument, let childDocument = childDocument, parentDocument != childDocument {
             throw XMLParsingError.nodeOperationFailed(
                 message: "Unable to append child from a different XML document."
             )
