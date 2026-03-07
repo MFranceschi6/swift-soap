@@ -78,10 +78,18 @@ private func run() throws {
     print("Generated SOAP sources: \(generatedPaths)")
 }
 
+private func writeErrorToStandardError(_ message: String) {
+    let line = message.hasSuffix("\n") ? message : "\(message)\n"
+    guard let data = line.data(using: .utf8) else {
+        return
+    }
+    FileHandle.standardError.write(data)
+}
+
 do {
     try run()
     Foundation.exit(ExitCode.success)
 } catch {
-    fputs("\(error)\n", stderr)
+    writeErrorToStandardError(String(describing: error))
     Foundation.exit(ExitCode.failure)
 }
