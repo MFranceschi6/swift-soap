@@ -291,7 +291,7 @@ public struct XMLTreeWriter: Sendable {
             )
 
             let setResult = LibXML2.withXMLCharPointer(attribute.name.localName) { attributeNamePointer in
-                LibXML2.withXMLCharPointer(attribute.value) { valuePointer in
+                LibXML2.withXMLCharPointer(attribute.value) { valuePointer -> xmlAttrPtr? in
                     if let attributeNamespace = attributeNamespace {
                         return xmlSetNsProp(node.nodePointer, attributeNamespace, attributeNamePointer, valuePointer)
                     }
