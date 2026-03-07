@@ -69,6 +69,9 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - compatibility jobs now assert expected manifest resolution per lane (`5.6`, `5.9`, `5.10`, `latest`);
   - added explicit macro/plugin contract verification on the `macro-5.9` lane;
   - local matrix script now includes `macro-5.9` with lane-aware manifest assertions and build/test behavior.
+- Unified GitHub Actions into a single lane-based workflow:
+  - removed the separate `compatibility-skeleton` workflow;
+  - `ci.yml` now owns all compatibility/quality lanes (`runtime-5.4`, `tooling-5.6+`, `macro-5.9`, `quality-5.10`, `latest`).
 - Fixed CI reliability regressions observed after enabling latest-lane Swift 6 mode:
   - `compatibility-skeleton` now executes `tooling-5.6+` via `swift:5.6` Docker image (avoids `setup-swift` 404 on 5.6 artifacts).
   - `Build and Test` excludes the unstable `macos-14 + Swift 6.2` tuple caused by upstream `swift-nio` strict-concurrency compilation failures in dependency sources.
