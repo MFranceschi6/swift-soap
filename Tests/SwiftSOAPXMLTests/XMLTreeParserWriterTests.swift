@@ -1,0 +1,138 @@
+import Foundation
+import SwiftSOAPXML
+import XCTest
+
+final class XMLTreeParserWriterTests: XCTestCase {
+    func test_parser_parsesMixedNodesAttributesAndNamespaces() throws {
+        let xml = """
+        <soap:Envelope xmlns:soap="urn:soap" xmlns:m="urn:messages" id="env">
+          <!--metadata-->
+          <soap:Body m:flag="true"><![CDATA[<payload/>]]><m:Echo>hello</m:Echo></soap:Body>
+        </soap:Envelope>
+        """
+
+        let parser = XMLTreeParser()
+        let document = try parser.parse(data: Data(xml.utf8))
+
+        XCTAssertEqual(document.root.name.localName, "Envelope")
+        XCTAssertEqual(document.root.name.namespaceURI, "urn:soap")
+        XCTAssertEqual(document.root.name.prefix, "soap")
+        XCTAssertEqual(document.root.attributes.count, 1)
+        XCTAssertEqual(document.root.attributes[0].name.localName, "id")
+        XCTAssertEqual(document.root.attributes[0].value, "env")
+        XCTAssertEqual(document.root.namespaceDeclarations.count, 2)
+
+        XCTAssertEqual(document.root.children.count, 2)
+        guard case .comment("metadata") = document.root.children[0] else {
+            return XCTFail("Expected first root child to be XML comment.")
+        }
+
+        guard case .element(let bodyElement) = document.root.children[1] else {
+            return XCTFail("Expected second root child to be body element.")
+        }
+
+        XCTAssertEqual(bodyElement.name.localName, "Body")
+        XCTAssertEqual(bodyElement.name.namespaceURI, "urn:soap")
+        XCTAssertEqual(bodyElement.attributes.count, 1)
+        XCTAssertEqual(bodyElement.attributes[0].name.localName, "flag")
+        XCTAssertEqual(bodyElement.attributes[0].name.namespaceURI, "urn:messages")
+        XCTAssertEqual(bodyElement.attributes[0].name.prefix, "m")
+        XCTAssertEqual(bodyElement.attributes[0].value, "true")
+
+        XCTAssertEqual(bodyElement.children.count, 2)
+        guard case .cdata("<payload/>") = bodyElement.children[0] else {
+            return XCTFail("Expected first body child to be CDATA.")
+        }
+
+        guard case .element(let echoElement) = bodyElement.children[1] else {
+            return XCTFail("Expected second body child to be echo element.")
+        }
+
+        XCTAssertEqual(echoElement.name.localName, "Echo")
+        XCTAssertEqual(echoElement.name.namespaceURI, "urn:messages")
+        XCTAssertEqual(echoElement.name.prefix, "m")
+        XCTAssertEqual(echoElement.children.count, 1)
+        XCTAssertEqual(echoElement.children[0], .text("hello"))
+    }
+
+    func test_writer_generatesXMLDocumentWithElementTextCDATAAndComment() throws {
+        let echoElement = XMLTreeElement(
+            name: XMLQualifiedName(localName: "Echo", namespaceURI: "urn:messages", prefix: "m"),
+            children: [
+                .text("hello")
+            ]
+        )
+        let bodyElement = XMLTreeElement(
+            name: XMLQualifiedName(localName: "Body", namespaceURI: "urn:soap", prefix: "soap"),
+            attributes: [
+                XMLTreeAttribute(
+                    name: XMLQualifiedName(localName: "flag", namespaceURI: "urn:messages", prefix: "m"),
+                    value: "true"
+                )
+            ],
+            children: [
+                .cdata("<payload/>"),
+                .element(echoElement)
+            ]
+        )
+        let root = XMLTreeElement(
+            name: XMLQualifiedName(localName: "Envelope", namespaceURI: "urn:soap", prefix: "soap"),
+            attributes: [
+                XMLTreeAttribute(name: XMLQualifiedName(localName: "id"), value: "env")
+            ],
+            namespaceDeclarations: [
+                XMLNamespaceDeclaration(prefix: "soap", uri: "urn:soap"),
+                XMLNamespaceDeclaration(prefix: "m", uri: "urn:messages")
+            ],
+            children: [
+                .comment("metadata"),
+                .element(bodyElement)
+            ]
+        )
+        let treeDocument = XMLTreeDocument(root: root)
+
+        let writer = XMLTreeWriter(configuration: .init(prettyPrinted: false))
+        let parser = XMLTreeParser()
+
+        let xmlData = try writer.writeData(treeDocument)
+        let roundtripTree = try parser.parse(data: xmlData)
+
+        XCTAssertEqual(roundtripTree.root.name.localName, "Envelope")
+        XCTAssertEqual(roundtripTree.root.name.namespaceURI, "urn:soap")
+        XCTAssertEqual(roundtripTree.root.attributes.count, 1)
+        XCTAssertEqual(roundtripTree.root.attributes[0].name.localName, "id")
+        XCTAssertEqual(roundtripTree.root.attributes[0].value, "env")
+        XCTAssertEqual(roundtripTree.root.children.count, 2)
+
+        guard case .comment("metadata") = roundtripTree.root.children[0] else {
+            return XCTFail("Expected first root child to be XML comment.")
+        }
+
+        guard case .element(let parsedBody) = roundtripTree.root.children[1] else {
+            return XCTFail("Expected second root child to be body element.")
+        }
+        XCTAssertEqual(parsedBody.attributes.count, 1)
+        XCTAssertEqual(parsedBody.attributes[0].name.localName, "flag")
+        XCTAssertEqual(parsedBody.attributes[0].name.namespaceURI, "urn:messages")
+        XCTAssertEqual(parsedBody.attributes[0].value, "true")
+        XCTAssertEqual(parsedBody.children.count, 2)
+        XCTAssertEqual(parsedBody.children[0], .cdata("<payload/>"))
+    }
+
+    func test_writer_and_parser_workThroughXMLDocumentBoundary() throws {
+        let treeDocument = XMLTreeDocument(
+            root: XMLTreeElement(
+                name: XMLQualifiedName(localName: "Root"),
+                children: [.text("value")]
+            )
+        )
+        let writer = XMLTreeWriter()
+        let parser = XMLTreeParser()
+
+        let xmlDocument = try writer.writeDocument(treeDocument)
+        let parsedTree = try parser.parse(document: xmlDocument)
+
+        XCTAssertEqual(parsedTree.root.name.localName, "Root")
+        XCTAssertEqual(parsedTree.root.children, [.text("value")])
+    }
+}
