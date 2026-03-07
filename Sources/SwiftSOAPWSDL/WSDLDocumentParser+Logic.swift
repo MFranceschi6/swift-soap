@@ -26,6 +26,12 @@ extension WSDLDocumentParser {
         let portTypes = try parsePortTypes(document: document)
         let bindings = try parseBindings(document: document)
         let services = try parseServices(document: document)
+        try validateDocumentConsistency(
+            messages: messages,
+            portTypes: portTypes,
+            bindings: bindings,
+            services: services
+        )
 
         return WSDLDefinition(
             name: definitionsNode.attribute(named: "name"),
@@ -216,6 +222,197 @@ extension WSDLDocumentParser {
                 }
 
             return WSDLDefinition.Service(name: serviceName, ports: ports)
+        }
+    }
+
+    private func validateDocumentConsistency(
+        messages: [WSDLDefinition.Message],
+        portTypes: [WSDLDefinition.PortType],
+        bindings: [WSDLDefinition.Binding],
+        services: [WSDLDefinition.Service]
+    ) throws {
+        try validateUniqueMessageNames(messages)
+        try validateUniquePortTypeNames(portTypes)
+        try validateUniqueBindingNames(bindings)
+        try validateUniqueServiceNames(services)
+        try validatePortTypeOperations(messages: messages, portTypes: portTypes)
+        try validateBindings(portTypes: portTypes, bindings: bindings)
+        try validateServices(bindings: bindings, services: services)
+    }
+
+    private func validateUniqueMessageNames(_ messages: [WSDLDefinition.Message]) throws {
+        var seenNames = Set<String>()
+        for message in messages {
+            if seenNames.contains(message.name) {
+                throw WSDLParsingError.invalidMessage(
+                    name: message.name,
+                    message: "Duplicated message name '\(message.name)'."
+                )
+            }
+            seenNames.insert(message.name)
+        }
+    }
+
+    private func validateUniquePortTypeNames(_ portTypes: [WSDLDefinition.PortType]) throws {
+        var seenNames = Set<String>()
+        for portType in portTypes {
+            if seenNames.contains(portType.name) {
+                throw WSDLParsingError.invalidPortType(
+                    name: portType.name,
+                    message: "Duplicated port type name '\(portType.name)'."
+                )
+            }
+            seenNames.insert(portType.name)
+        }
+    }
+
+    private func validateUniqueBindingNames(_ bindings: [WSDLDefinition.Binding]) throws {
+        var seenNames = Set<String>()
+        for binding in bindings {
+            if seenNames.contains(binding.name) {
+                throw WSDLParsingError.invalidBinding(
+                    name: binding.name,
+                    message: "Duplicated binding name '\(binding.name)'."
+                )
+            }
+            seenNames.insert(binding.name)
+        }
+    }
+
+    private func validateUniqueServiceNames(_ services: [WSDLDefinition.Service]) throws {
+        var seenNames = Set<String>()
+        for service in services {
+            if seenNames.contains(service.name) {
+                throw WSDLParsingError.invalidService(
+                    name: service.name,
+                    message: "Duplicated service name '\(service.name)'."
+                )
+            }
+            seenNames.insert(service.name)
+
+            var seenPortNames = Set<String>()
+            for port in service.ports {
+                if seenPortNames.contains(port.name) {
+                    throw WSDLParsingError.invalidServicePort(
+                        name: port.name,
+                        message: "Service '\(service.name)' contains duplicated port name '\(port.name)'."
+                    )
+                }
+                seenPortNames.insert(port.name)
+            }
+        }
+    }
+
+    private func validatePortTypeOperations(
+        messages: [WSDLDefinition.Message],
+        portTypes: [WSDLDefinition.PortType]
+    ) throws {
+        let messageNames = Set(messages.map { $0.name })
+
+        for portType in portTypes {
+            var seenOperationNames = Set<String>()
+            for operation in portType.operations {
+                if seenOperationNames.contains(operation.name) {
+                    throw WSDLParsingError.invalidOperation(
+                        name: operation.name,
+                        message: "Port type '\(portType.name)' contains duplicated operation '\(operation.name)'."
+                    )
+                }
+                seenOperationNames.insert(operation.name)
+
+                if let inputMessageName = operation.inputMessageName, !messageNames.contains(inputMessageName) {
+                    throw WSDLParsingError.invalidOperation(
+                        name: operation.name,
+                        message: "Operation '\(operation.name)' references unknown input message '\(inputMessageName)'."
+                    )
+                }
+
+                if let outputMessageName = operation.outputMessageName, !messageNames.contains(outputMessageName) {
+                    throw WSDLParsingError.invalidOperation(
+                        name: operation.name,
+                        message: "Operation '\(operation.name)' references unknown output message '\(outputMessageName)'."
+                    )
+                }
+
+                for fault in operation.faults {
+                    if let messageName = fault.messageName, !messageNames.contains(messageName) {
+                        throw WSDLParsingError.invalidOperation(
+                            name: operation.name,
+                            message: "Operation '\(operation.name)' fault '\(fault.name)' references unknown message '\(messageName)'."
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private func validateBindings(
+        portTypes: [WSDLDefinition.PortType],
+        bindings: [WSDLDefinition.Binding]
+    ) throws {
+        var portTypeOperationsByName: [String: Set<String>] = [:]
+        for portType in portTypes {
+            let operationNames = Set(portType.operations.map { $0.name })
+            portTypeOperationsByName[portType.name] = operationNames
+        }
+
+        for binding in bindings {
+            guard let typeName = binding.typeName else {
+                throw WSDLParsingError.invalidBinding(
+                    name: binding.name,
+                    message: "Binding '\(binding.name)' is missing required 'type' reference."
+                )
+            }
+
+            guard let portTypeOperations = portTypeOperationsByName[typeName] else {
+                throw WSDLParsingError.invalidBinding(
+                    name: binding.name,
+                    message: "Binding '\(binding.name)' references unknown port type '\(typeName)'."
+                )
+            }
+
+            var seenOperationNames = Set<String>()
+            for operation in binding.operations {
+                if seenOperationNames.contains(operation.name) {
+                    throw WSDLParsingError.invalidBinding(
+                        name: binding.name,
+                        message: "Binding '\(binding.name)' contains duplicated operation '\(operation.name)'."
+                    )
+                }
+                seenOperationNames.insert(operation.name)
+
+                if !portTypeOperations.contains(operation.name) {
+                    throw WSDLParsingError.invalidBinding(
+                        name: binding.name,
+                        message: "Binding '\(binding.name)' operation '\(operation.name)' is not declared in port type '\(typeName)'."
+                    )
+                }
+            }
+        }
+    }
+
+    private func validateServices(
+        bindings: [WSDLDefinition.Binding],
+        services: [WSDLDefinition.Service]
+    ) throws {
+        let bindingNames = Set(bindings.map { $0.name })
+
+        for service in services {
+            for port in service.ports {
+                guard let bindingName = port.bindingName else {
+                    throw WSDLParsingError.invalidServicePort(
+                        name: port.name,
+                        message: "Service '\(service.name)' port '\(port.name)' is missing required 'binding' reference."
+                    )
+                }
+
+                if !bindingNames.contains(bindingName) {
+                    throw WSDLParsingError.invalidServicePort(
+                        name: port.name,
+                        message: "Service '\(service.name)' port '\(port.name)' references unknown binding '\(bindingName)'."
+                    )
+                }
+            }
         }
     }
 

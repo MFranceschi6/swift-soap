@@ -17,6 +17,9 @@ final class WSDLDocumentParserTests: XCTestCase {
           <wsdl:message name="GetWeatherOutput">
             <wsdl:part name="temperature" type="xsd:int"/>
           </wsdl:message>
+          <wsdl:message name="ServiceFaultMessage">
+            <wsdl:part name="detail" type="xsd:string"/>
+          </wsdl:message>
           <wsdl:portType name="WeatherPortType">
             <wsdl:operation name="GetWeather">
               <wsdl:input message="tns:GetWeatherInput"/>
@@ -44,10 +47,11 @@ final class WSDLDocumentParserTests: XCTestCase {
         XCTAssertEqual(definition.name, "WeatherService")
         XCTAssertEqual(definition.targetNamespace, "urn:weather")
 
-        XCTAssertEqual(definition.messages.count, 2)
+        XCTAssertEqual(definition.messages.count, 3)
         XCTAssertEqual(definition.messages[0].name, "GetWeatherInput")
         XCTAssertEqual(definition.messages[0].parts.first?.name, "city")
         XCTAssertEqual(definition.messages[0].parts.first?.typeName, "string")
+        XCTAssertEqual(definition.messages[2].name, "ServiceFaultMessage")
 
         XCTAssertEqual(definition.portTypes.count, 1)
         XCTAssertEqual(definition.portTypes[0].name, "WeatherPortType")
@@ -139,6 +143,88 @@ final class WSDLDocumentParserTests: XCTestCase {
         <wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
           <wsdl:service name="WeatherService">
             <wsdl:port binding="tns:WeatherBinding"/>
+          </wsdl:service>
+        </wsdl:definitions>
+        """
+
+        let parser = WSDLDocumentParser()
+        XCTAssertThrowsError(try parser.parse(data: Data(wsdl.utf8))) { error in
+            guard case WSDLParsingError.invalidServicePort = error else {
+                return XCTFail("Expected invalidServicePort, got: \(error)")
+            }
+        }
+    }
+
+    func test_parse_operationWithUnknownInputMessage_throwsInvalidOperation() {
+        let wsdl = """
+        <wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+          <wsdl:portType name="WeatherPortType">
+            <wsdl:operation name="GetWeather">
+              <wsdl:input message="tns:UnknownInput"/>
+            </wsdl:operation>
+          </wsdl:portType>
+        </wsdl:definitions>
+        """
+
+        let parser = WSDLDocumentParser()
+        XCTAssertThrowsError(try parser.parse(data: Data(wsdl.utf8))) { error in
+            guard case WSDLParsingError.invalidOperation = error else {
+                return XCTFail("Expected invalidOperation, got: \(error)")
+            }
+        }
+    }
+
+    func test_parse_bindingWithUnknownPortType_throwsInvalidBinding() {
+        let wsdl = """
+        <wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+          <wsdl:message name="GetWeatherInput"/>
+          <wsdl:portType name="WeatherPortType">
+            <wsdl:operation name="GetWeather">
+              <wsdl:input message="tns:GetWeatherInput"/>
+            </wsdl:operation>
+          </wsdl:portType>
+          <wsdl:binding name="WeatherBinding" type="tns:UnknownPortType">
+            <wsdl:operation name="GetWeather"/>
+          </wsdl:binding>
+        </wsdl:definitions>
+        """
+
+        let parser = WSDLDocumentParser()
+        XCTAssertThrowsError(try parser.parse(data: Data(wsdl.utf8))) { error in
+            guard case WSDLParsingError.invalidBinding = error else {
+                return XCTFail("Expected invalidBinding, got: \(error)")
+            }
+        }
+    }
+
+    func test_parse_bindingOperationNotInPortType_throwsInvalidBinding() {
+        let wsdl = """
+        <wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+          <wsdl:message name="GetWeatherInput"/>
+          <wsdl:portType name="WeatherPortType">
+            <wsdl:operation name="GetWeather">
+              <wsdl:input message="tns:GetWeatherInput"/>
+            </wsdl:operation>
+          </wsdl:portType>
+          <wsdl:binding name="WeatherBinding" type="tns:WeatherPortType">
+            <wsdl:operation name="NotDeclaredOnPortType"/>
+          </wsdl:binding>
+        </wsdl:definitions>
+        """
+
+        let parser = WSDLDocumentParser()
+        XCTAssertThrowsError(try parser.parse(data: Data(wsdl.utf8))) { error in
+            guard case WSDLParsingError.invalidBinding = error else {
+                return XCTFail("Expected invalidBinding, got: \(error)")
+            }
+        }
+    }
+
+    func test_parse_servicePortWithUnknownBinding_throwsInvalidServicePort() {
+        let wsdl = """
+        <wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+          <wsdl:service name="WeatherService">
+            <wsdl:port name="WeatherPort" binding="tns:UnknownBinding"/>
           </wsdl:service>
         </wsdl:definitions>
         """
