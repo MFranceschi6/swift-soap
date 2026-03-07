@@ -80,7 +80,7 @@ struct FixtureSwiftToolchainSupport {
     }
 
     private static func parseVersion(from output: String?) -> SwiftLanguageVersion? {
-        guard let output else {
+        guard let output = output else {
             return nil
         }
 
