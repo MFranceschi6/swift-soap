@@ -1,0 +1,457 @@
+import Foundation
+import SwiftSOAPCodeGenCore
+import XCTest
+
+final class GeneratedRuntimeIntegrationTests: XCTestCase {
+    private struct FixtureProcessFailure: LocalizedError {
+        let command: String
+        let output: String
+
+        var errorDescription: String? {
+            "Command failed: \(command)\n\(output)"
+        }
+    }
+
+    func test_generatedRuntime_asyncAndNIO_roundtripAndFault_forRPCEncodedSOAP12() throws {
+        let fileManager = FileManager.default
+        let repositoryRoot = fileManager.currentDirectoryPath
+        let fixtureRoot = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("swift-soap-generated-runtime-\(UUID().uuidString)", isDirectory: true)
+
+        try fileManager.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: fixtureRoot) }
+
+        try prepareFixtureLayout(at: fixtureRoot)
+        try writeFixturePackageManifest(at: fixtureRoot, repositoryRoot: repositoryRoot)
+        try writeFixtureWSDL(at: fixtureRoot)
+        try writeFixtureRuntimeTests(at: fixtureRoot)
+        try generateFixtureSources(at: fixtureRoot)
+
+        let generatedFileURL = fixtureRoot
+            .appendingPathComponent("Sources/GeneratedRuntime/GeneratedRuntime+GeneratedSOAP.swift")
+        XCTAssertTrue(fileManager.fileExists(atPath: generatedFileURL.path))
+
+        try runCommand(
+            executable: "/usr/bin/env",
+            arguments: [
+                "swift",
+                "test",
+                "--package-path", fixtureRoot.path
+            ],
+            currentDirectoryURL: fixtureRoot
+        )
+    }
+
+    private func prepareFixtureLayout(at fixtureRoot: URL) throws {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(
+            at: fixtureRoot.appendingPathComponent("Fixtures", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try fileManager.createDirectory(
+            at: fixtureRoot.appendingPathComponent("Sources/GeneratedRuntime", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try fileManager.createDirectory(
+            at: fixtureRoot.appendingPathComponent("Tests/GeneratedRuntimeTests", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+    }
+
+    private func writeFixturePackageManifest(at fixtureRoot: URL, repositoryRoot: String) throws {
+        let escapedRepositoryRoot = repositoryRoot
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+
+        let packageManifest = """
+        // swift-tools-version: 6.1
+        import PackageDescription
+
+        let package = Package(
+            name: "GeneratedRuntimeFixture",
+            platforms: [
+                .macOS(.v10_15)
+            ],
+            dependencies: [
+                .package(path: "\(escapedRepositoryRoot)"),
+                .package(url: "https://github.com/apple/swift-nio.git", from: "2.0.0")
+            ],
+            targets: [
+                .target(
+                    name: "GeneratedRuntime",
+                    dependencies: [
+                        .product(name: "SwiftSOAPCore", package: "swift-soap"),
+                        .product(name: "SwiftSOAPClientAsync", package: "swift-soap"),
+                        .product(name: "SwiftSOAPServerAsync", package: "swift-soap"),
+                        .product(name: "SwiftSOAPClientNIO", package: "swift-soap"),
+                        .product(name: "SwiftSOAPServerNIO", package: "swift-soap"),
+                        .product(name: "NIOCore", package: "swift-nio")
+                    ]
+                ),
+                .testTarget(
+                    name: "GeneratedRuntimeTests",
+                    dependencies: [
+                        "GeneratedRuntime",
+                        .product(name: "NIOEmbedded", package: "swift-nio")
+                    ]
+                )
+            ]
+        )
+        """
+
+        try packageManifest.write(
+            to: fixtureRoot.appendingPathComponent("Package.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
+    }
+
+    private func writeFixtureWSDL(at fixtureRoot: URL) throws {
+        let wsdl = """
+        <wsdl:definitions
+            xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+            xmlns:soap12="http://schemas.xmlsoap.org/wsdl/soap12/"
+            xmlns:tns="urn:matrix"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            targetNamespace="urn:matrix"
+            name="MatrixService">
+          <wsdl:types>
+            <xsd:schema targetNamespace="urn:matrix">
+              <xsd:complexType name="MatrixPayload">
+                <xsd:sequence>
+                  <xsd:element name="value" type="xsd:string"/>
+                </xsd:sequence>
+              </xsd:complexType>
+            </xsd:schema>
+          </wsdl:types>
+          <wsdl:message name="InputMessage">
+            <wsdl:part name="value" type="xsd:string"/>
+          </wsdl:message>
+          <wsdl:message name="OutputMessage">
+            <wsdl:part name="value" type="xsd:string"/>
+          </wsdl:message>
+          <wsdl:message name="FaultMessage">
+            <wsdl:part name="reason" type="xsd:string"/>
+          </wsdl:message>
+          <wsdl:portType name="MatrixPortType">
+            <wsdl:operation name="Transform">
+              <wsdl:input message="tns:InputMessage"/>
+              <wsdl:output message="tns:OutputMessage"/>
+              <wsdl:fault name="Fault" message="tns:FaultMessage"/>
+            </wsdl:operation>
+          </wsdl:portType>
+          <wsdl:binding name="MatrixBinding" type="tns:MatrixPortType">
+            <soap12:binding style="rpc" transport="http://schemas.xmlsoap.org/soap/http"/>
+            <wsdl:operation name="Transform">
+              <soap12:operation soapAction="urn:transform" style="rpc"/>
+              <wsdl:input><soap12:body use="encoded"/></wsdl:input>
+              <wsdl:output><soap12:body use="encoded"/></wsdl:output>
+            </wsdl:operation>
+          </wsdl:binding>
+          <wsdl:service name="MatrixService">
+            <wsdl:port name="MatrixPort" binding="tns:MatrixBinding"/>
+          </wsdl:service>
+        </wsdl:definitions>
+        """
+
+        try wsdl.write(
+            to: fixtureRoot.appendingPathComponent("Fixtures/service.wsdl"),
+            atomically: true,
+            encoding: .utf8
+        )
+    }
+
+    private func generateFixtureSources(at fixtureRoot: URL) throws {
+        let configuration = CodeGenConfiguration(
+            wsdlPath: "Fixtures/service.wsdl",
+            moduleName: "GeneratedRuntime",
+            outputMode: .export,
+            buildOutputDirectory: ".build/swift-soap-codegen",
+            exportOutputDirectory: "Sources/GeneratedRuntime",
+            runtimeTargets: [.async, .nio],
+            generationScope: [.client, .server],
+            targetSwiftVersion: SwiftLanguageVersion(major: 6, minor: 0),
+            syntaxFeatures: [:]
+        )
+
+        let generator = CodeGenerator()
+        let artifacts = try generator.generate(configuration: configuration, packageRootPath: fixtureRoot.path)
+        try generator.writeArtifacts(artifacts, configuration: configuration, packageRootPath: fixtureRoot.path)
+    }
+
+    // swiftlint:disable:next function_body_length
+    private func writeFixtureRuntimeTests(at fixtureRoot: URL) throws {
+        let tests = #"""
+        import Foundation
+        import NIOCore
+        import NIOEmbedded
+        import SwiftSOAPClientAsync
+        import SwiftSOAPClientNIO
+        import SwiftSOAPCore
+        import SwiftSOAPServerAsync
+        import SwiftSOAPServerNIO
+        import XCTest
+        @testable import GeneratedRuntime
+
+        final class GeneratedRuntimeRoundtripTests: XCTestCase {
+            func test_roundtrip_successAndFault_forAsyncAndNIO() async throws {
+                XCTAssertEqual(MatrixServiceMatrixPortTransformOperation.bindingMetadata.envelopeVersion, .soap12)
+                XCTAssertEqual(MatrixServiceMatrixPortTransformOperation.bindingMetadata.style, .rpc)
+                XCTAssertEqual(MatrixServiceMatrixPortTransformOperation.bindingMetadata.bodyUse, .encoded)
+
+                let endpointURL = try XCTUnwrap(URL(string: "https://example.com/soap"))
+
+                let asyncServer = AsyncLoopbackServer()
+                let asyncRegistrar = MatrixServiceMatrixPortAsyncServerRegistrar(server: asyncServer)
+                try await asyncRegistrar.register(implementation: AsyncServiceImplementation())
+                try await asyncServer.start()
+
+                let asyncClient = MatrixServiceMatrixPortAsyncClient(
+                    client: AsyncLoopbackClient(server: asyncServer),
+                    endpointURL: endpointURL
+                )
+
+                let asyncSuccess = try await asyncClient.transform(request: InputMessagePayload(value: "ok"))
+                switch asyncSuccess {
+                case .success(let payload):
+                    XCTAssertEqual(payload.value, "pong:ok")
+                case .fault:
+                    XCTFail("Expected async success response.")
+                }
+
+                let asyncFault = try await asyncClient.transform(request: InputMessagePayload(value: "fault"))
+                switch asyncFault {
+                case .success:
+                    XCTFail("Expected async fault response.")
+                case .fault(let fault):
+                    XCTAssertEqual(fault.faultCode, .server)
+                    XCTAssertEqual(fault.detail?.reason, "simulated-fault")
+                }
+
+                try await asyncServer.stop()
+
+                let eventLoop = EmbeddedEventLoop()
+                let nioServer = NIOLoopbackServer()
+                let nioRegistrar = MatrixServiceMatrixPortNIOServerRegistrar(server: nioServer)
+                nioRegistrar.register(implementation: NIOServiceImplementation())
+                try await nioServer.start(on: eventLoop).get()
+
+                let nioClient = MatrixServiceMatrixPortNIOClient(
+                    client: NIOLoopbackClient(server: nioServer),
+                    endpointURL: endpointURL
+                )
+
+                let nioSuccess = try await nioClient.transform(
+                    request: InputMessagePayload(value: "ok"),
+                    on: eventLoop
+                ).get()
+                switch nioSuccess {
+                case .success(let payload):
+                    XCTAssertEqual(payload.value, "pong:ok")
+                case .fault:
+                    XCTFail("Expected NIO success response.")
+                }
+
+                let nioFault = try await nioClient.transform(
+                    request: InputMessagePayload(value: "fault"),
+                    on: eventLoop
+                ).get()
+                switch nioFault {
+                case .success:
+                    XCTFail("Expected NIO fault response.")
+                case .fault(let fault):
+                    XCTAssertEqual(fault.faultCode, .server)
+                    XCTAssertEqual(fault.detail?.reason, "simulated-fault")
+                }
+
+                try await nioServer.stop(on: eventLoop).get()
+            }
+        }
+
+        private struct AsyncServiceImplementation: MatrixServiceMatrixPortAsyncService {
+            func transform(request: InputMessagePayload) async throws(any Error) -> SOAPOperationResponse<OutputMessagePayload, FaultMessageFaultDetail> {
+                if request.value == "fault" {
+                    let fault = try SOAPFault<FaultMessageFaultDetail>(
+                        faultCode: .server,
+                        faultString: "simulated server fault",
+                        detail: FaultMessageFaultDetail(reason: "simulated-fault")
+                    )
+                    return .fault(fault)
+                }
+
+                return .success(OutputMessagePayload(value: "pong:\(request.value ?? "nil")"))
+            }
+        }
+
+        private struct NIOServiceImplementation: MatrixServiceMatrixPortNIOService {
+            func transform(
+                request: InputMessagePayload,
+                on eventLoop: EventLoop
+            ) -> EventLoopFuture<SOAPOperationResponse<OutputMessagePayload, FaultMessageFaultDetail>> {
+                if request.value == "fault" {
+                    do {
+                        let fault = try SOAPFault<FaultMessageFaultDetail>(
+                            faultCode: .server,
+                            faultString: "simulated server fault",
+                            detail: FaultMessageFaultDetail(reason: "simulated-fault")
+                        )
+                        return eventLoop.makeSucceededFuture(.fault(fault))
+                    } catch {
+                        return eventLoop.makeFailedFuture(error)
+                    }
+                }
+
+                return eventLoop.makeSucceededFuture(.success(OutputMessagePayload(value: "pong:\(request.value ?? "nil")")))
+            }
+        }
+
+        private actor AsyncLoopbackServer: SOAPServerAsync {
+            private typealias ErasedHandler = @Sendable (Any) async throws(any Error) -> Any
+
+            private var handlers: [String: ErasedHandler] = [:]
+
+            func register<Operation: SOAPOperationContract>(
+                _ operation: Operation.Type,
+                handler: @escaping SOAPAsyncOperationHandler<Operation>
+            ) async throws(any Error) {
+                handlers[operation.operationIdentifier.rawValue] = { request in
+                    guard let typedRequest = request as? Operation.RequestPayload else {
+                        throw SOAPCoreError.invalidPayload(message: "Invalid async request payload for operation.")
+                    }
+                    return try await handler(typedRequest)
+                }
+            }
+
+            func start() async throws(any Error) {}
+            func stop() async throws(any Error) {}
+
+            func dispatch<Operation: SOAPOperationContract>(
+                _ operation: Operation.Type,
+                request: Operation.RequestPayload
+            ) async throws(any Error) -> SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload> {
+                guard let handler = handlers[operation.operationIdentifier.rawValue] else {
+                    throw SOAPCoreError.invalidPayload(message: "Missing async operation handler.")
+                }
+
+                let response = try await handler(request)
+                guard let typedResponse = response as? SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload> else {
+                    throw SOAPCoreError.invalidPayload(message: "Invalid async operation response payload.")
+                }
+
+                return typedResponse
+            }
+        }
+
+        private struct AsyncLoopbackClient: SOAPClientAsync {
+            let server: AsyncLoopbackServer
+
+            func invoke<Operation: SOAPOperationContract>(
+                _ operation: Operation.Type,
+                request: Operation.RequestPayload,
+                endpointURL: URL
+            ) async throws(any Error) -> SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload> {
+                _ = endpointURL
+                return try await server.dispatch(operation, request: request)
+            }
+        }
+
+        private final class NIOLoopbackServer: SOAPServerNIO {
+            typealias ErasedHandler = (Any, EventLoop) -> EventLoopFuture<Any>
+
+            private var handlers: [String: ErasedHandler] = [:]
+
+            func register<Operation: SOAPOperationContract>(
+                _ operation: Operation.Type,
+                handler: @escaping SOAPNIOOperationHandler<Operation>
+            ) {
+                handlers[operation.operationIdentifier.rawValue] = { request, eventLoop in
+                    guard let typedRequest = request as? Operation.RequestPayload else {
+                        return eventLoop.makeFailedFuture(
+                            SOAPCoreError.invalidPayload(message: "Invalid NIO request payload for operation.")
+                        )
+                    }
+
+                    return handler(typedRequest, eventLoop).flatMapThrowing { response in
+                        response as Any
+                    }
+                }
+            }
+
+            func start(on eventLoop: EventLoop) -> EventLoopFuture<Void> {
+                eventLoop.makeSucceededFuture(())
+            }
+
+            func stop(on eventLoop: EventLoop) -> EventLoopFuture<Void> {
+                eventLoop.makeSucceededFuture(())
+            }
+
+            func dispatch<Operation: SOAPOperationContract>(
+                _ operation: Operation.Type,
+                request: Operation.RequestPayload,
+                on eventLoop: EventLoop
+            ) -> EventLoopFuture<SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload>> {
+                guard let handler = handlers[operation.operationIdentifier.rawValue] else {
+                    return eventLoop.makeFailedFuture(SOAPCoreError.invalidPayload(message: "Missing NIO operation handler."))
+                }
+
+                return handler(request, eventLoop).flatMapThrowing { response in
+                    guard let typedResponse = response as? SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload> else {
+                        throw SOAPCoreError.invalidPayload(message: "Invalid NIO operation response payload.")
+                    }
+                    return typedResponse
+                }
+            }
+        }
+
+        private struct NIOLoopbackClient: SOAPClientNIO {
+            let server: NIOLoopbackServer
+
+            func invoke<Operation: SOAPOperationContract>(
+                _ operation: Operation.Type,
+                request: Operation.RequestPayload,
+                endpointURL: URL,
+                on eventLoop: EventLoop
+            ) -> EventLoopFuture<SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload>> {
+                _ = endpointURL
+                return server.dispatch(operation, request: request, on: eventLoop)
+            }
+        }
+        """#
+
+        try tests.write(
+            to: fixtureRoot.appendingPathComponent("Tests/GeneratedRuntimeTests/GeneratedRuntimeRoundtripTests.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
+    }
+
+    private func runCommand(
+        executable: String,
+        arguments: [String],
+        currentDirectoryURL: URL
+    ) throws {
+        let logURL = currentDirectoryURL.appendingPathComponent("command-\(UUID().uuidString).log")
+        FileManager.default.createFile(atPath: logURL.path, contents: nil)
+        let logHandle = try FileHandle(forWritingTo: logURL)
+        defer {
+            try? logHandle.close()
+            try? FileManager.default.removeItem(at: logURL)
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.currentDirectoryURL = currentDirectoryURL
+        process.standardOutput = logHandle
+        process.standardError = logHandle
+
+        try process.run()
+        process.waitUntilExit()
+
+        if process.terminationStatus != 0 {
+            let output = try String(contentsOf: logURL, encoding: .utf8)
+            let command = ([executable] + arguments).joined(separator: " ")
+            throw FixtureProcessFailure(command: command, output: output)
+        }
+    }
+}

@@ -2,6 +2,7 @@ import SwiftSOAPCompatibility
 
 public enum WSDLParsingError: Error {
     case invalidDocument(message: String?)
+    case invalidSchema(name: String?, message: String?)
     case invalidMessage(name: String?, message: String?)
     case invalidPortType(name: String?, message: String?)
     case invalidOperation(name: String?, message: String?)

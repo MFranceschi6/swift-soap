@@ -32,6 +32,20 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - bootstrap `WSDLDocumentParser` and dedicated `SwiftSOAPWSDLTests` target with initial parser coverage.
   - consistency validation in `WSDLDocumentParser` for cross-references between messages, port types, bindings, and services to support codegen-ready contracts.
   - enriched binding-operation metadata (`style`, `inputUse`, `outputUse`) plus validation of SOAP body `use` values for stricter codegen inputs.
+- Added Epic 6B code generation foundation:
+  - new `SwiftSOAPCodeGenCore` target with configuration model, diagnostics, canonical IR, and Swift emitter;
+  - new `SwiftSOAPCodeGen` CLI executable supporting JSON config + CLI overrides;
+  - added modern-manifest build tool plugin `SwiftSOAPCodeGenPlugin` (5.6/6.x manifests) invoking the same CLI contract.
+- Added a dedicated latest-manifest for PackageDescription 6.1:
+  - new `Package@swift-6.1.swift` for latest lane selection with additive manifest capabilities.
+- Added Epic 6B Swift target-aware codegen controls:
+  - `targetSwiftVersion` and `syntaxFeatures` in codegen configuration contract;
+  - new CLI overrides `--target-swift` and repeatable `--syntax-feature <name>=<true|false>`;
+  - syntax feature registry/policy with deterministic validation diagnostics.
+- Extended `SwiftSOAPWSDL` semantic model and parser for codegen inputs:
+  - added QName-aware model fields and first `types/XSD` model extraction (complex/simple types, sequence/choice, attributes);
+  - added local `xsd:import`/`xsd:include` resolution support with explicit remote-location rejection in v1;
+  - added SOAP binding matrix parsing metadata (SOAP 1.1/1.2, document/rpc, literal/encoded).
 
 ### Changed
 - Enabled Swift 6 language mode in the latest manifest lane:
@@ -48,6 +62,13 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - `quality-5.10` and `latest` run test coverage commands with serialized workers.
 - Improved XML runtime safety for invalid tree mutations:
   - `XMLNode.addChild(_:)` now rejects self-child and ancestor-child insertions before calling libxml2 to prevent cycle-related undefined behavior.
+- Added SOAP binding strategy contracts in `SwiftSOAPCore` for generated operation metadata validation across document/rpc and literal/encoded combinations.
+- Refactored code generation emitter architecture to support automatic toolchain-based backend selection:
+  - shared `SwiftSourceEmitter` contract + factory;
+  - modern-lane `SwiftSyntaxBuilder` integration with fallback text emitter for compatibility lanes.
+- Split plugin implementation by manifest capability:
+  - `Package@swift-6.1.swift` uses URL-based plugin API surface via `Plugins/SwiftSOAPCodeGenPlugin61/Plugin.swift`;
+  - `Package@swift-6.0.swift` keeps the existing `Path`-based plugin implementation for compatibility.
 - Hardened XML ownership internals in preparation for deeper Swift 6 ownership work:
   - centralized `xmlChar*` lifetime management in `LibXML2.withOwnedXMLCharPointer(...)`;
   - strengthened `XMLDocument` storage invariants by making the owned `xmlDocPtr` non-optional.

@@ -36,6 +36,52 @@ public struct XMLNode {
         return String(cString: UnsafePointer<CChar>(OpaquePointer(hrefPointer)))
     }
 
+    public func parent() -> XMLNode? {
+        guard let parentPointer = nodePointer.pointee.parent else {
+            return nil
+        }
+        guard parentPointer.pointee.type == XML_ELEMENT_NODE else {
+            return nil
+        }
+        return XMLNode(nodePointer: parentPointer)
+    }
+
+    public func namespaceDeclarations() -> [String: String] {
+        var declarations: [String: String] = [:]
+        var namespacePointer = nodePointer.pointee.nsDef
+
+        while let currentNamespacePointer = namespacePointer {
+            let prefix: String
+            if let prefixPointer = currentNamespacePointer.pointee.prefix {
+                prefix = String(cString: UnsafePointer<CChar>(OpaquePointer(prefixPointer)))
+            } else {
+                prefix = ""
+            }
+
+            if let hrefPointer = currentNamespacePointer.pointee.href {
+                declarations[prefix] = String(cString: UnsafePointer<CChar>(OpaquePointer(hrefPointer)))
+            }
+
+            namespacePointer = currentNamespacePointer.pointee.next
+        }
+
+        return declarations
+    }
+
+    public func namespaceDeclarationsInScope() -> [String: String] {
+        var scopeDeclarations: [String: String] = [:]
+        var currentNode: XMLNode? = self
+
+        while let node = currentNode {
+            for (prefix, uri) in node.namespaceDeclarations() where scopeDeclarations[prefix] == nil {
+                scopeDeclarations[prefix] = uri
+            }
+            currentNode = node.parent()
+        }
+
+        return scopeDeclarations
+    }
+
     public func text() -> String? {
         return LibXML2.withOwnedXMLCharPointer(xmlNodeGetContent(nodePointer)) { contentPointer in
             String(cString: UnsafePointer<CChar>(OpaquePointer(contentPointer)))
