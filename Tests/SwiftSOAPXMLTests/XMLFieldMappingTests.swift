@@ -1,6 +1,17 @@
 import Foundation
 import SwiftSOAPXML
 import XCTest
+#if canImport(SwiftSOAPXMLMacros)
+import SwiftSOAPXMLMacros
+#endif
+
+#if canImport(SwiftSOAPXMLMacros)
+@XMLNodeMapping(attributes: ["id"], elements: ["name"])
+private struct MacroMappedPayload: Codable, Equatable {
+    let id: Int
+    let name: String
+}
+#endif
 
 final class XMLFieldMappingTests: XCTestCase {
     func test_wrappers_encodeAndDecode_attributeAndElementMapping() throws {
@@ -143,6 +154,26 @@ final class XMLFieldMappingTests: XCTestCase {
             }
             XCTAssertTrue((message ?? "").contains("XML6_6_ATTRIBUTE_ENCODE_UNSUPPORTED"))
         }
+    }
+
+    func test_macroMapping_encodeAndDecode_attributeAndElementMapping() throws {
+#if canImport(SwiftSOAPXMLMacros)
+        let input = MacroMappedPayload(id: 12, name: "macro")
+        let encoder = XMLEncoder(configuration: .init(rootElementName: "Payload"))
+        let tree = try encoder.encodeTree(input)
+
+        XCTAssertEqual(tree.root.attributes.count, 1)
+        XCTAssertEqual(tree.root.attributes[0].name.localName, "id")
+        XCTAssertEqual(tree.root.attributes[0].value, "12")
+        XCTAssertEqual(firstChild(named: "name", in: tree.root)?.children, [.text("macro")])
+
+        let data = try encoder.encode(input)
+        let decoder = XMLDecoder(configuration: .init(rootElementName: "Payload"))
+        let output = try decoder.decode(MacroMappedPayload.self, from: data)
+        XCTAssertEqual(output, input)
+#else
+        throw XCTSkip("Macro module not available on this lane.")
+#endif
     }
 
     private func firstChild(named name: String, in element: XMLTreeElement) -> XMLTreeElement? {

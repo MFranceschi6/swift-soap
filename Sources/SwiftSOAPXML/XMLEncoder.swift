@@ -94,7 +94,12 @@ public struct XMLEncoder: Sendable {
         let rootElementName = resolveRootElementName(for: T.self)
         let rootNode = _XMLTreeElementBox(name: XMLQualifiedName(localName: rootElementName))
         let options = _XMLEncoderOptions(configuration: configuration)
-        let encoder = _XMLTreeEncoder(options: options, codingPath: [], node: rootNode)
+        let encoder = _XMLTreeEncoder(
+            options: options,
+            codingPath: [],
+            node: rootNode,
+            fieldNodeKinds: _xmlFieldNodeKinds(for: T.self)
+        )
         try value.encode(to: encoder)
         return XMLTreeDocument(root: rootNode.makeElement())
     }
