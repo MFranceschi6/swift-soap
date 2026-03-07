@@ -97,10 +97,22 @@ extension WSDLDefinition {
     public struct BindingOperation: Sendable, Equatable {
         public let name: String
         public let soapAction: String?
+        public let style: String?
+        public let inputUse: String?
+        public let outputUse: String?
 
-        public init(name: String, soapAction: String?) {
+        public init(
+            name: String,
+            soapAction: String?,
+            style: String? = nil,
+            inputUse: String? = nil,
+            outputUse: String? = nil
+        ) {
             self.name = name
             self.soapAction = soapAction
+            self.style = style
+            self.inputUse = inputUse
+            self.outputUse = outputUse
         }
     }
 

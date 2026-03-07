@@ -173,7 +173,35 @@ extension WSDLDocumentParser {
                         .attribute(named: "soapAction")
                         .flatMap(normalized)
 
-                    return WSDLDefinition.BindingOperation(name: operationName, soapAction: soapAction)
+                    let operationStyle = operationNode
+                        .children()
+                        .first(where: { $0.name == "operation" })?
+                        .attribute(named: "style")
+                        .flatMap(normalized)
+
+                    let inputUse = operationNode
+                        .children()
+                        .first(where: { $0.name == "input" })?
+                        .children()
+                        .first(where: { $0.name == "body" })?
+                        .attribute(named: "use")
+                        .flatMap(normalized)
+
+                    let outputUse = operationNode
+                        .children()
+                        .first(where: { $0.name == "output" })?
+                        .children()
+                        .first(where: { $0.name == "body" })?
+                        .attribute(named: "use")
+                        .flatMap(normalized)
+
+                    return WSDLDefinition.BindingOperation(
+                        name: operationName,
+                        soapAction: soapAction,
+                        style: operationStyle,
+                        inputUse: inputUse,
+                        outputUse: outputUse
+                    )
                 }
 
             return WSDLDefinition.Binding(
@@ -387,6 +415,20 @@ extension WSDLDocumentParser {
                         message: "Binding '\(binding.name)' operation '\(operation.name)' is not declared in port type '\(typeName)'."
                     )
                 }
+
+                if let inputUse = operation.inputUse, !isValidSoapBodyUse(inputUse) {
+                    throw WSDLParsingError.invalidBinding(
+                        name: binding.name,
+                        message: "Binding '\(binding.name)' operation '\(operation.name)' has invalid input use '\(inputUse)'."
+                    )
+                }
+
+                if let outputUse = operation.outputUse, !isValidSoapBodyUse(outputUse) {
+                    throw WSDLParsingError.invalidBinding(
+                        name: binding.name,
+                        message: "Binding '\(binding.name)' operation '\(operation.name)' has invalid output use '\(outputUse)'."
+                    )
+                }
             }
         }
     }
@@ -437,5 +479,9 @@ extension WSDLDocumentParser {
 
         let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmedValue.isEmpty ? nil : trimmedValue
+    }
+
+    private func isValidSoapBodyUse(_ value: String) -> Bool {
+        value == "literal" || value == "encoded"
     }
 }

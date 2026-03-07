@@ -31,6 +31,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - baseline in-memory WSDL model (`WSDLDefinition`) for messages, port types, bindings, and services;
   - bootstrap `WSDLDocumentParser` and dedicated `SwiftSOAPWSDLTests` target with initial parser coverage.
   - consistency validation in `WSDLDocumentParser` for cross-references between messages, port types, bindings, and services to support codegen-ready contracts.
+  - enriched binding-operation metadata (`style`, `inputUse`, `outputUse`) plus validation of SOAP body `use` values for stricter codegen inputs.
 
 ### Changed
 - Enabled Swift 6 language mode in the latest manifest lane:
