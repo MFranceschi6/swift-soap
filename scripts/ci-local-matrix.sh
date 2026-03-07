@@ -16,6 +16,7 @@ SWIFTLY_CONFIG="${SWIFTLY_CONFIG:-$HOME/.swiftly/config.json}"
 LANES=(
   runtime-5.4
   tooling-5.6-plus
+  macro-5.9
   quality-5.10
   latest
 )
@@ -24,8 +25,8 @@ usage() {
   cat <<'USAGE'
 Usage:
   ./scripts/ci-local-matrix.sh
-  ./scripts/ci-local-matrix.sh --lane <runtime-5.4|tooling-5.6-plus|quality-5.10|latest>
-  ./scripts/ci-local-matrix.sh <runtime-5.4|tooling-5.6-plus|quality-5.10|latest>
+  ./scripts/ci-local-matrix.sh --lane <runtime-5.4|tooling-5.6-plus|macro-5.9|quality-5.10|latest>
+  ./scripts/ci-local-matrix.sh <runtime-5.4|tooling-5.6-plus|macro-5.9|quality-5.10|latest>
   ./scripts/ci-local-matrix.sh --list-toolchains
 
 Environment:
@@ -36,7 +37,7 @@ USAGE
 
 is_valid_lane() {
   case "$1" in
-    runtime-5.4|tooling-5.6-plus|quality-5.10|latest) return 0 ;;
+    runtime-5.4|tooling-5.6-plus|macro-5.9|quality-5.10|latest) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -78,6 +79,9 @@ lane_accepts_version() {
       ;;
     tooling-5.6-plus)
       [[ "$version" == 5.6* || "$version" == 5.7* || "$version" == 5.8* || "$version" == 5.9* ]]
+      ;;
+    macro-5.9)
+      [[ "$version" == 5.9* ]]
       ;;
     quality-5.10)
       [[ "$version" == 5.10* ]]
@@ -199,10 +203,45 @@ run_lane() {
         run_swift package --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" describe > "$RUN_DIR/runtime-5.4-package-describe.txt"
         ;;
       tooling-5.6-plus)
+        run_swift package --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" dump-package > "$RUN_DIR/tooling-5.6-plus-dump-package.json"
+        if grep -q '"name"[[:space:]]*:[[:space:]]*"SwiftSOAPXMLMacros"' "$RUN_DIR/tooling-5.6-plus-dump-package.json"; then
+          echo "Unexpected macro targets in tooling-5.6-plus lane"
+          exit 1
+        fi
+        if grep -q '"name"[[:space:]]*:[[:space:]]*"SwiftSOAPXMLOwnership6"' "$RUN_DIR/tooling-5.6-plus-dump-package.json"; then
+          echo "Unexpected SwiftSOAPXMLOwnership6 in tooling-5.6-plus lane"
+          exit 1
+        fi
+        run_swift build --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" -c debug --jobs 1
+        run_swift test --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" --jobs 1 --parallel --num-workers 1
+        ;;
+      macro-5.9)
+        run_swift package --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" dump-package > "$RUN_DIR/macro-5.9-dump-package.json"
+        if ! grep -q '"name"[[:space:]]*:[[:space:]]*"SwiftSOAPXMLMacros"' "$RUN_DIR/macro-5.9-dump-package.json"; then
+          echo "Expected SwiftSOAPXMLMacros in macro-5.9 lane"
+          exit 1
+        fi
+        if ! grep -q '"name"[[:space:]]*:[[:space:]]*"SwiftSOAPXMLMacroImplementation"' "$RUN_DIR/macro-5.9-dump-package.json"; then
+          echo "Expected SwiftSOAPXMLMacroImplementation in macro-5.9 lane"
+          exit 1
+        fi
+        if grep -q '"name"[[:space:]]*:[[:space:]]*"SwiftSOAPXMLOwnership6"' "$RUN_DIR/macro-5.9-dump-package.json"; then
+          echo "Unexpected SwiftSOAPXMLOwnership6 in macro-5.9 lane"
+          exit 1
+        fi
         run_swift build --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" -c debug --jobs 1
         run_swift test --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" --jobs 1 --parallel --num-workers 1
         ;;
       quality-5.10)
+        run_swift package --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" dump-package > "$RUN_DIR/quality-5.10-dump-package.json"
+        if ! grep -q '"name"[[:space:]]*:[[:space:]]*"SwiftSOAPXMLMacros"' "$RUN_DIR/quality-5.10-dump-package.json"; then
+          echo "Expected SwiftSOAPXMLMacros in quality-5.10 lane"
+          exit 1
+        fi
+        if grep -q '"name"[[:space:]]*:[[:space:]]*"SwiftSOAPXMLOwnership6"' "$RUN_DIR/quality-5.10-dump-package.json"; then
+          echo "Unexpected SwiftSOAPXMLOwnership6 in quality-5.10 lane"
+          exit 1
+        fi
         if ! command -v swiftlint >/dev/null 2>&1; then
           echo "swiftlint not found in PATH"
           exit 127
@@ -212,6 +251,11 @@ run_lane() {
         run_swift test --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" --enable-code-coverage --jobs 1 --parallel --num-workers 1
         ;;
       latest)
+        run_swift package --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" dump-package > "$RUN_DIR/latest-dump-package.json"
+        if ! grep -q '"name"[[:space:]]*:[[:space:]]*"SwiftSOAPXMLOwnership6"' "$RUN_DIR/latest-dump-package.json"; then
+          echo "Expected SwiftSOAPXMLOwnership6 in latest lane"
+          exit 1
+        fi
         run_swift build --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" -c debug --jobs 1
         run_swift test --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" --jobs 1 --parallel --num-workers 1
         ;;
@@ -259,7 +303,7 @@ if [[ "$LIST_TOOLCHAINS" == "true" ]]; then
 fi
 
 if [[ -n "$SELECTED_LANE" ]] && ! is_valid_lane "$SELECTED_LANE"; then
-  echo "Unknown lane '$SELECTED_LANE'. Allowed: runtime-5.4, tooling-5.6-plus, quality-5.10, latest"
+  echo "Unknown lane '$SELECTED_LANE'. Allowed: runtime-5.4, tooling-5.6-plus, macro-5.9, quality-5.10, latest"
   exit 1
 fi
 

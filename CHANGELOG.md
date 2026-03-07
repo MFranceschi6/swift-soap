@@ -65,6 +65,10 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - Hardened compatibility lane execution for deterministic test behavior on Linux:
   - `tooling-5.6+` now runs both build and tests in CI.
   - compatibility lanes use explicit single-worker test execution (`--parallel --num-workers 1`) where required to reduce flaky hangs.
+- Hardened lane-specific manifest selection checks across CI/local matrix:
+  - compatibility jobs now assert expected manifest resolution per lane (`5.6`, `5.9`, `5.10`, `latest`);
+  - added explicit macro/plugin contract verification on the `macro-5.9` lane;
+  - local matrix script now includes `macro-5.9` with lane-aware manifest assertions and build/test behavior.
 - Fixed CI reliability regressions observed after enabling latest-lane Swift 6 mode:
   - `compatibility-skeleton` now executes `tooling-5.6+` via `swift:5.6` Docker image (avoids `setup-swift` 404 on 5.6 artifacts).
   - `Build and Test` excludes the unstable `macos-14 + Swift 6.2` tuple caused by upstream `swift-nio` strict-concurrency compilation failures in dependency sources.
