@@ -1,0 +1,260 @@
+import Foundation
+import SwiftSOAPXML
+import XCTest
+
+final class XMLEncoderTests: XCTestCase {
+    func test_encodeTree_keyedAndNestedEncodable_buildsElementHierarchy() throws {
+        struct Payload: Encodable {
+            let id: Int
+            let title: String
+            let values: [Int]
+        }
+
+        let encoder = XMLEncoder(
+            configuration: .init(rootElementName: "PayloadRoot")
+        )
+        let tree = try encoder.encodeTree(
+            Payload(id: 42, title: "hello", values: [1, 2, 3])
+        )
+
+        XCTAssertEqual(tree.root.name.localName, "PayloadRoot")
+        XCTAssertEqual(textForFirstChild(named: "id", in: tree.root), "42")
+        XCTAssertEqual(textForFirstChild(named: "title", in: tree.root), "hello")
+
+        guard let values = firstChild(named: "values", in: tree.root) else {
+            return XCTFail("Expected 'values' element.")
+        }
+        let items = children(named: "item", in: values)
+        XCTAssertEqual(items.count, 3)
+        XCTAssertEqual(textContent(of: items[0]), "1")
+        XCTAssertEqual(textContent(of: items[1]), "2")
+        XCTAssertEqual(textContent(of: items[2]), "3")
+    }
+
+    func test_encodeTree_singleValueEncodable_writesRootText() throws {
+        let encoder = XMLEncoder(configuration: .init(rootElementName: "Value"))
+        let tree = try encoder.encodeTree("abc")
+
+        XCTAssertEqual(tree.root.name.localName, "Value")
+        XCTAssertEqual(tree.root.children, [.text("abc")])
+    }
+
+    func test_encodeTree_nilEncodingStrategy_emptyElement_preservesOptionalField() throws {
+        struct ManualNilPayload: Encodable {
+            let present: String
+
+            enum CodingKeys: String, CodingKey {
+                case present
+                case missing
+            }
+
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(present, forKey: .present)
+                try container.encodeNil(forKey: .missing)
+            }
+        }
+
+        let encoder = XMLEncoder(
+            configuration: .init(
+                rootElementName: "Payload",
+                nilEncodingStrategy: .emptyElement
+            )
+        )
+        let tree = try encoder.encodeTree(
+            ManualNilPayload(present: "ok")
+        )
+
+        XCTAssertEqual(textForFirstChild(named: "present", in: tree.root), "ok")
+        guard let missing = firstChild(named: "missing", in: tree.root) else {
+            return XCTFail("Expected empty 'missing' element.")
+        }
+        XCTAssertTrue(missing.children.isEmpty)
+    }
+
+    func test_encodeTree_nilEncodingStrategy_omitElement_dropsOptionalField() throws {
+        struct ManualNilPayload: Encodable {
+            let present: String
+
+            enum CodingKeys: String, CodingKey {
+                case present
+                case missing
+            }
+
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(present, forKey: .present)
+                try container.encodeNil(forKey: .missing)
+            }
+        }
+
+        let encoder = XMLEncoder(
+            configuration: .init(
+                rootElementName: "Payload",
+                nilEncodingStrategy: .omitElement
+            )
+        )
+        let tree = try encoder.encodeTree(
+            ManualNilPayload(present: "ok")
+        )
+
+        XCTAssertEqual(textForFirstChild(named: "present", in: tree.root), "ok")
+        XCTAssertNil(firstChild(named: "missing", in: tree.root))
+    }
+
+    func test_encodeTree_rootElementName_isSanitizedForXMLSafety() throws {
+        struct Sample: Encodable { let value: String }
+        let encoder = XMLEncoder(
+            configuration: .init(rootElementName: "  9 root name  ")
+        )
+        let tree = try encoder.encodeTree(Sample(value: "x"))
+
+        XCTAssertEqual(tree.root.name.localName, "_9_root_name")
+    }
+
+    func test_encodeTree_dateAndDataStrategies_applyConfiguredScalarFormatting() throws {
+        struct Payload: Encodable {
+            let createdAt: Date
+            let raw: Data
+        }
+
+        let date = Date(timeIntervalSince1970: 12.5)
+        let payload = Payload(createdAt: date, raw: Data([0x41, 0x42]))
+        let encoder = XMLEncoder(
+            configuration: .init(
+                rootElementName: "Payload",
+                dateEncodingStrategy: .secondsSince1970,
+                dataEncodingStrategy: .base64
+            )
+        )
+
+        let tree = try encoder.encodeTree(payload)
+        XCTAssertEqual(textForFirstChild(named: "createdAt", in: tree.root), "12.5")
+        XCTAssertEqual(textForFirstChild(named: "raw", in: tree.root), "QUI=")
+    }
+
+    func test_encodeTree_dataEncodingStrategy_hex_emitsHexLexicalValue() throws {
+        struct Payload: Encodable {
+            let raw: Data
+        }
+
+        let encoder = XMLEncoder(
+            configuration: .init(
+                rootElementName: "Payload",
+                dataEncodingStrategy: .hex
+            )
+        )
+
+        let tree = try encoder.encodeTree(Payload(raw: Data([0x41, 0x42])))
+        XCTAssertEqual(textForFirstChild(named: "raw", in: tree.root), "4142")
+    }
+
+    func test_encodeTree_dateEncodingStrategy_formatter_usesFoundationFormatterDescriptor() throws {
+        struct Payload: Encodable {
+            let createdAt: Date
+        }
+
+        let descriptor = XMLDateFormatterDescriptor(
+            format: "yyyy/MM/dd HH:mm:ss",
+            localeIdentifier: "en_US_POSIX",
+            timeZoneIdentifier: "UTC"
+        )
+        let encoder = XMLEncoder(
+            configuration: .init(
+                rootElementName: "Payload",
+                dateEncodingStrategy: .formatter(descriptor)
+            )
+        )
+
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let tree = try encoder.encodeTree(Payload(createdAt: date))
+        XCTAssertEqual(textForFirstChild(named: "createdAt", in: tree.root), "2023/11/14 22:13:20")
+    }
+
+    func test_encodeTree_dateEncodingStrategy_custom_receivesContextAndReturnsLexicalValue() throws {
+        struct Payload: Encodable {
+            let createdAt: Date
+        }
+
+        let encoder = XMLEncoder(
+            configuration: .init(
+                rootElementName: "Payload",
+                dateEncodingStrategy: .custom { date, context in
+                    let seconds = Int(date.timeIntervalSince1970)
+                    return "\(context.localName ?? "unknown"):\(seconds)"
+                }
+            )
+        )
+
+        let tree = try encoder.encodeTree(
+            Payload(createdAt: Date(timeIntervalSince1970: 25))
+        )
+        XCTAssertEqual(textForFirstChild(named: "createdAt", in: tree.root), "createdAt:25")
+    }
+
+    func test_encode_writesParsableXMLData() throws {
+        struct Payload: Encodable {
+            let message: String
+            let numbers: [Int]
+        }
+
+        let encoder = XMLEncoder(
+            configuration: .init(
+                rootElementName: "Envelope",
+                writerConfiguration: .init(prettyPrinted: false)
+            )
+        )
+        let data = try encoder.encode(
+            Payload(message: "hello", numbers: [7, 8])
+        )
+
+        let parser = XMLTreeParser()
+        let parsed = try parser.parse(data: data)
+
+        XCTAssertEqual(parsed.root.name.localName, "Envelope")
+        XCTAssertEqual(textForFirstChild(named: "message", in: parsed.root), "hello")
+        guard let numbers = firstChild(named: "numbers", in: parsed.root) else {
+            return XCTFail("Expected numbers element.")
+        }
+        let items = children(named: "item", in: numbers)
+        XCTAssertEqual(items.count, 2)
+        XCTAssertEqual(textContent(of: items[0]), "7")
+        XCTAssertEqual(textContent(of: items[1]), "8")
+    }
+
+    private func firstChild(named name: String, in element: XMLTreeElement) -> XMLTreeElement? {
+        element.children.first { node in
+            guard case .element(let child) = node else { return false }
+            return child.name.localName == name
+        }.flatMap { node in
+            guard case .element(let child) = node else { return nil }
+            return child
+        }
+    }
+
+    private func children(named name: String, in element: XMLTreeElement) -> [XMLTreeElement] {
+        element.children.compactMap { node in
+            guard case .element(let child) = node, child.name.localName == name else {
+                return nil
+            }
+            return child
+        }
+    }
+
+    private func textForFirstChild(named name: String, in element: XMLTreeElement) -> String? {
+        guard let child = firstChild(named: name, in: element) else {
+            return nil
+        }
+        return textContent(of: child)
+    }
+
+    private func textContent(of element: XMLTreeElement) -> String? {
+        element.children.first { node in
+            if case .text = node { return true }
+            return false
+        }.flatMap { node in
+            guard case .text(let value) = node else { return nil }
+            return value
+        }
+    }
+}
