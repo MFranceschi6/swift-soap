@@ -86,8 +86,7 @@ public struct XMLDecoder: Sendable {
     #endif
 
     private func decodeTreeImpl<T: Decodable>(_ type: T.Type, from tree: XMLTreeDocument) throws -> T {
-        if let expectedRootName = configuration.rootElementName?.trimmingCharacters(in: .whitespacesAndNewlines),
-           expectedRootName.isEmpty == false,
+        if let expectedRootName = try resolveExpectedRootElementName(for: type),
            tree.root.name.localName != expectedRootName {
             throw XMLParsingError.parseFailed(
                 message: "[XML6_5_ROOT_MISMATCH] Expected root '\(expectedRootName)' but found '\(tree.root.name.localName)'."
@@ -102,5 +101,13 @@ public struct XMLDecoder: Sendable {
             fieldNodeKinds: _xmlFieldNodeKinds(for: T.self)
         )
         return try T(from: decoder)
+    }
+
+    private func resolveExpectedRootElementName<T>(for type: T.Type) throws -> String? {
+        if let explicitName = XMLRootNameResolver.explicitRootElementName(from: configuration.rootElementName) {
+            return explicitName
+        }
+
+        return try XMLRootNameResolver.implicitRootElementName(for: type)
     }
 }
