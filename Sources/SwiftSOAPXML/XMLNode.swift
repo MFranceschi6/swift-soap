@@ -1,5 +1,6 @@
 import Foundation
 import SwiftSOAPCompatibility
+import SwiftSOAPXMLCShim
 
 public struct XMLNode {
     fileprivate let nodePointer: xmlNodePtr

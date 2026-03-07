@@ -10,6 +10,7 @@ let package = Package(
     products: [
         .library(name: "SwiftSOAPCore", targets: ["SwiftSOAPCore"]),
         .library(name: "SwiftSOAPXML", targets: ["SwiftSOAPXML"]),
+        .library(name: "SwiftSOAPWSDL", targets: ["SwiftSOAPWSDL"]),
         .library(name: "SwiftSOAPClientAsync", targets: ["SwiftSOAPClientAsync"]),
         .library(name: "SwiftSOAPServerAsync", targets: ["SwiftSOAPServerAsync"]),
         .library(name: "SwiftSOAPClientNIO", targets: ["SwiftSOAPClientNIO"]),
@@ -38,7 +39,22 @@ let package = Package(
             publicHeadersPath: "include"
         ),
         .target(
+            name: "SwiftSOAPXMLOwnership6",
+            dependencies: [
+                "SwiftSOAPCompatibility",
+                "SwiftSOAPXMLCShim"
+            ]
+        ),
+        .target(
             name: "SwiftSOAPCore",
+            dependencies: [
+                "SwiftSOAPCompatibility",
+                "SwiftSOAPXML",
+                .product(name: "Logging", package: "swift-log")
+            ]
+        ),
+        .target(
+            name: "SwiftSOAPWSDL",
             dependencies: [
                 "SwiftSOAPCompatibility",
                 "SwiftSOAPXML",
@@ -72,6 +88,7 @@ let package = Package(
             dependencies: [
                 "SwiftSOAPCompatibility",
                 "SwiftSOAPXMLCShim",
+                "SwiftSOAPXMLOwnership6",
                 .product(name: "Logging", package: "swift-log")
             ]
         ),
@@ -104,6 +121,10 @@ let package = Package(
         .testTarget(
             name: "SwiftSOAPXMLTests",
             dependencies: ["SwiftSOAPXML"]
+        ),
+        .testTarget(
+            name: "SwiftSOAPWSDLTests",
+            dependencies: ["SwiftSOAPWSDL"]
         ),
     ],
     swiftLanguageModes: [
