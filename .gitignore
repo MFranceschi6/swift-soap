@@ -17,6 +17,7 @@ codecov/
 
 # Local tooling/editor state
 .cursor/
+.vscode/
 
 # GitHub Actions local testing (act)
 .act/

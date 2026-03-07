@@ -162,7 +162,7 @@ public struct XMLTreeWriter: Sendable {
         let rootNamespace = makeNamespace(from: root.name)
 
         let xmlDocument: XMLDocument
-        if let rootNamespace {
+        if let rootNamespace = rootNamespace {
             xmlDocument = try XMLDocument(rootElementName: root.name.localName, rootNamespace: rootNamespace)
         } else {
             xmlDocument = try XMLDocument(rootElementName: root.name.localName)
@@ -292,7 +292,7 @@ public struct XMLTreeWriter: Sendable {
 
             let setResult = LibXML2.withXMLCharPointer(attribute.name.localName) { attributeNamePointer in
                 LibXML2.withXMLCharPointer(attribute.value) { valuePointer in
-                    if let attributeNamespace {
+                    if let attributeNamespace = attributeNamespace {
                         return xmlSetNsProp(node.nodePointer, attributeNamespace, attributeNamePointer, valuePointer)
                     }
                     return xmlSetProp(node.nodePointer, attributeNamePointer, valuePointer)
@@ -342,7 +342,7 @@ public struct XMLTreeWriter: Sendable {
         let namespaceByPrefix = LibXML2.withXMLCharPointer(prefix) { prefixPointer in
             xmlSearchNs(documentPointer, nodePointer, prefixPointer)
         }
-        guard let namespaceByPrefix else {
+        guard let namespaceByPrefix = namespaceByPrefix else {
             return nil
         }
 
@@ -366,7 +366,7 @@ public struct XMLTreeWriter: Sendable {
             }
         }
 
-        guard let namespacePointer else {
+        guard let namespacePointer = namespacePointer else {
             throw XMLParsingError.nodeOperationFailed(
                 message: "Unable to declare namespace '\(prefix):\(uri)'."
             )
@@ -469,7 +469,7 @@ public struct XMLTreeWriter: Sendable {
     }
 
     private func string(fromXMLCharPointer pointer: UnsafePointer<xmlChar>?) -> String? {
-        guard let pointer else {
+        guard let pointer = pointer else {
             return nil
         }
         return String(cString: UnsafePointer<CChar>(OpaquePointer(pointer)))
@@ -513,7 +513,7 @@ public struct XMLTreeWriter: Sendable {
         code: String,
         context: String
     ) throws {
-        guard let limit else {
+        guard let limit = limit else {
             return
         }
 

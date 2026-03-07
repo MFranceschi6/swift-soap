@@ -270,7 +270,7 @@ final class _XMLTreeDecoder: Decoder {
 
     private func requiredLexicalValue(from element: XMLTreeElement, codingPath: [CodingKey]) throws -> String {
         let lexical = lexicalText(of: element)?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let lexical, lexical.isEmpty == false else {
+        guard let lexical = lexical, lexical.isEmpty == false else {
             throw XMLParsingError.parseFailed(
                 message: "[XML6_5C_EMPTY_LEXICAL_VALUE] Empty lexical value at path '\(renderCodingPath(codingPath))'."
             )
