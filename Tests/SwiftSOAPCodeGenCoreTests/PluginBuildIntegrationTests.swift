@@ -47,6 +47,7 @@ final class PluginBuildIntegrationTests: XCTestCase {
         let escapedRepositoryRoot = repositoryRoot
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
+        let packageIdentity = FixtureSwiftToolchainSupport.packageIdentity(forRepositoryRoot: repositoryRoot)
 
         let packageManifest = """
         // swift-tools-version: \(toolchain.fixtureToolsVersion)
@@ -64,16 +65,16 @@ final class PluginBuildIntegrationTests: XCTestCase {
                 .target(
                     name: "PluginGeneratedClient",
                     dependencies: [
-                        .product(name: "SwiftSOAPCore", package: "swift-soap"),
-                        .product(name: "SwiftSOAPClientAsync", package: "swift-soap"),
-                        .product(name: "SwiftSOAPServerAsync", package: "swift-soap")
+                        .product(name: "SwiftSOAPCore", package: "\(packageIdentity)"),
+                        .product(name: "SwiftSOAPClientAsync", package: "\(packageIdentity)"),
+                        .product(name: "SwiftSOAPServerAsync", package: "\(packageIdentity)")
                     ],
                     exclude: [
                         "service.wsdl",
                         "swift-soap-codegen.json"
                     ],
                     plugins: [
-                        .plugin(name: "SwiftSOAPCodeGenPlugin", package: "swift-soap")
+                        .plugin(name: "SwiftSOAPCodeGenPlugin", package: "\(packageIdentity)")
                     ]
                 )
             ]

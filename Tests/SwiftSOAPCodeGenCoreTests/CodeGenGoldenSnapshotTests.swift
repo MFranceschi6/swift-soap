@@ -171,15 +171,16 @@ final class CodeGenGoldenSnapshotTests: XCTestCase {
 
     private func makeCompileFixtureManifest(rootPath: String, toolsVersion: String) -> String {
         let escapedRoot = rootPath.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let packageIdentity = FixtureSwiftToolchainSupport.packageIdentity(forRepositoryRoot: rootPath)
         let targetDefinitions = matrixCases.map { testCase in
             let target = targetName(for: testCase)
             return """
                     .target(
                         name: "\(target)",
                         dependencies: [
-                            .product(name: "SwiftSOAPCore", package: "swift-soap"),
-                            .product(name: "SwiftSOAPClientAsync", package: "swift-soap"),
-                            .product(name: "SwiftSOAPServerAsync", package: "swift-soap")
+                            .product(name: "SwiftSOAPCore", package: "\(packageIdentity)"),
+                            .product(name: "SwiftSOAPClientAsync", package: "\(packageIdentity)"),
+                            .product(name: "SwiftSOAPServerAsync", package: "\(packageIdentity)")
                         ]
                     )
             """

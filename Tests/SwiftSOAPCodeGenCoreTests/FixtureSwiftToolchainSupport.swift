@@ -39,6 +39,24 @@ struct FixtureSwiftToolchainSupport {
         codeGenTargetSwiftVersion >= SwiftLanguageVersion(major: 6, minor: 0) ? "throws(any Error)" : "throws"
     }
 
+    static func packageIdentity(forRepositoryRoot repositoryRoot: String) -> String {
+        let pathURL = URL(fileURLWithPath: repositoryRoot, isDirectory: true)
+        let rawBaseName = pathURL.lastPathComponent
+        let withoutGitSuffix: String
+        if rawBaseName.lowercased().hasSuffix(".git"), rawBaseName.count > 4 {
+            withoutGitSuffix = String(rawBaseName.dropLast(4))
+        } else {
+            withoutGitSuffix = rawBaseName
+        }
+
+        let normalized = withoutGitSuffix
+            .lowercased()
+            .replacingOccurrences(of: "[^a-z0-9]+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+
+        return normalized.isEmpty ? "swift-soap" : normalized
+    }
+
     private static func detectCompilerVersion() -> SwiftLanguageVersion {
         if let parsed = parseVersion(from: swiftVersionOutput()) {
             return parsed
