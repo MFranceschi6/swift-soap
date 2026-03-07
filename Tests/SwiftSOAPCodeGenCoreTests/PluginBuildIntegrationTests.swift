@@ -33,7 +33,7 @@ final class PluginBuildIntegrationTests: XCTestCase {
 
         XCTAssertNotNil(generatedFileURL, "Expected plugin-generated file '\(expectedGeneratedFileName)' under \(buildDirectory.path)")
 
-        if let generatedFileURL {
+        if let generatedFileURL = generatedFileURL {
             let generatedSource = try String(contentsOf: generatedFileURL, encoding: .utf8)
             XCTAssertFalse(generatedSource.isEmpty)
         }
