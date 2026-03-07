@@ -30,6 +30,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - new `SwiftSOAPWSDL` library target in modern manifests (`Package@swift-5.6.swift`, `Package@swift-6.0.swift`);
   - baseline in-memory WSDL model (`WSDLDefinition`) for messages, port types, bindings, and services;
   - bootstrap `WSDLDocumentParser` and dedicated `SwiftSOAPWSDLTests` target with initial parser coverage.
+  - consistency validation in `WSDLDocumentParser` for cross-references between messages, port types, bindings, and services to support codegen-ready contracts.
 
 ### Changed
 - Enabled Swift 6 language mode in the latest manifest lane:
