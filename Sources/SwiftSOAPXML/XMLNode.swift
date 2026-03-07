@@ -3,7 +3,7 @@ import SwiftSOAPCompatibility
 import SwiftSOAPXMLCShim
 
 public struct XMLNode {
-    fileprivate let nodePointer: xmlNodePtr
+    let nodePointer: xmlNodePtr
 
     init(nodePointer: xmlNodePtr) {
         self.nodePointer = nodePointer
