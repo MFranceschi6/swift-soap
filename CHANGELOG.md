@@ -54,6 +54,10 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - new `SwiftSOAPXMLMacros` + `SwiftSOAPXMLMacroImplementation` targets in `Package@swift-6.0.swift` and `Package@swift-6.1.swift`;
   - new `@XMLNodeMapping(attributes:elements:)` macro generating `XMLFieldCodingOverrideProvider` metadata for runtime mapping parity with wrappers/overrides;
   - macro parity coverage in `XMLFieldMappingTests`.
+- Added XML Step `6.6N` macro lane enablement for Swift 5.9:
+  - new `Package@swift-5.9.swift` with macro targets/products enabled and path-based plugin integration;
+  - lane-aware fixture manifest/tools-version support in codegen/plugin/runtime integration tests;
+  - plugin manifest contract now validates 5.6/5.9/6.0/6.1 manifests.
 
 ### Changed
 - Enabled Swift 6 language mode in the latest manifest lane:
@@ -101,12 +105,13 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - Introduced Epic 2 versioning scaffolding with a multi-manifest layout:
   - `Package.swift` now represents the legacy baseline (`swift-tools-version: 5.4`);
   - `Package@swift-5.6.swift` defines the current runtime/tooling package graph;
+  - `Package@swift-5.9.swift` defines the modern pre-Swift-6 macro lane;
   - `Package@swift-6.0.swift` defines the latest-lane package graph.
 - Updated CI/workflow scaffolding to align with versioned manifests:
   - cache key now tracks `Package.swift` and `Package@swift-*.swift`;
   - compatibility skeleton lanes now list and reference the versioned manifest set.
 - Updated `agent.md` compatibility policy from single-version minimum to explicit lanes:
-  - `runtime-5.4`, `tooling-5.6+`, `quality-5.10`, `latest`;
+  - `runtime-5.4`, `tooling-5.6+`, `macro-5.9`, `quality-5.10`, `latest`;
   - explicit separation rule for `EventLoop` vs `async/await` API surfaces;
   - multi-manifest strategy documented under versioning rules.
 - Added Epic-based governance baseline for roadmap execution:

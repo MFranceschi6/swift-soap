@@ -14,8 +14,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-14, ubuntu-22.04]
-        # Swift 5.10 is the quality baseline and Swift 6.2 is the latest reference version.
-        swift-version: ["5.10", "6.2"]
+        # Swift 5.9 enables macro baseline coverage, 5.10 is quality baseline, and 6.2 is latest reference.
+        swift-version: ["5.9", "5.10", "6.2"]
         # Temporary: exclude macOS + Swift 6.2 due upstream swift-nio/NIOEmbedded
         # strict-concurrency compilation failure in dependency sources.
         exclude:

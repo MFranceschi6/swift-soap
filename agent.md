@@ -38,6 +38,7 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - Modello compatibilità a lane:
   - **runtime-5.4**: target legacy per API EventLoop/NIO (senza dipendenze obbligatorie da `async/await`);
   - **tooling-5.6+**: plugin/codegen e tooling build-time;
+  - **macro-5.9**: validazione dedicata disponibilità macro/manifest moderni pre-Swift 6;
   - **quality-5.10**: baseline di qualità (lint/test/coverage obbligatori);
   - **latest**: ultima versione Swift stabile, usata per feature additive del linguaggio.
 - Fino al completamento dello split runtime (`NIO/EventLoop` vs `Async/Await`), i moduli runtime correnti possono restare su baseline Swift 5.10; la lane runtime-5.4 resta comunque un target obbligatorio di roadmap/versioning.
@@ -192,16 +193,17 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - I test devono essere eseguiti (CI) su **più versioni di Swift**:
   - `runtime-5.4`: check di compatibilità runtime legacy/eventloop (almeno smoke o build mirata in base allo stato roadmap);
   - `tooling-5.6+`: check manifest/tooling build-time;
+  - `macro-5.9`: check build/test per disponibilità macro e selezione manifest dedicato;
   - `quality-5.10`: gate completo lint/test/coverage;
   - `latest`: validazione sull’ultima Swift disponibile.
 - Oltre alla CI, prima della chiusura di uno step che può essere influenzato dalla versione Swift, è obbligatoria una validazione locale sulle lane/versioni che introducono differenze di comportamento o compilazione:
-  - eseguire build/test locali per ogni lane impattata (`runtime-5.4`, `tooling-5.6+`, `quality-5.10`, `latest`);
+  - eseguire build/test locali per ogni lane impattata (`runtime-5.4`, `tooling-5.6+`, `macro-5.9`, `quality-5.10`, `latest`);
   - se una lane non è applicabile allo step corrente, motivarlo esplicitamente nel report tecnico.
 - I test e le fixture non devono dipendere da comportamenti specifici di una singola versione.
 
 ## 11) Workflow operativo
 1. **Branching**: Per ogni nuovo task o issue, creare e lavorare sempre su un nuovo branch dedicato.
-2. Comprendere requisiti e vincoli (API pubbliche, compatibilità Linux, lane Swift attive: runtime-5.4/tooling-5.6+/quality-5.10/latest, stile, naming file).
+2. Comprendere requisiti e vincoli (API pubbliche, compatibilità Linux, lane Swift attive: runtime-5.4/tooling-5.6+/macro-5.9/quality-5.10/latest, stile, naming file).
 3. Se cambia una API pubblica: proporre design, alternative e trade-off.
 4. Implementare in modo incrementale e leggibile, preferendo `extension`.
 5. Aggiungere/aggiornare test; coverage opzionale nelle fasi esplorative, obbligatoria nella validazione finale.
@@ -367,6 +369,7 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - Mantenere la strategia multi-manifest in repo:
   - `Package.swift` baseline legacy (`swift-tools-version: 5.4`);
   - `Package@swift-5.6.swift` per lane tooling/runtime moderna;
+  - `Package@swift-5.9.swift` per lane macro moderna pre-Swift 6;
   - `Package@swift-6.0.swift` (o successivo) per lane latest e feature additive di linguaggio.
 - Evitare di introdurre feature/target in manifest legacy che richiedono toolchain non disponibili in quella lane.
 
@@ -389,6 +392,7 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - Non introdurre dipendenze senza verifica licenza e reputazione.
 
 ## 14) Changelog dell’agent
+- v0.22: Aggiornato modello lane/versioning con lane `macro-5.9` e strategia multi-manifest estesa (`Package@swift-5.9.swift`) per disponibilità macro pre-Swift 6.
 - v0.21: Aggiunta regola obbligatoria di proposta automatica commit ai checkpoint tecnici significativi.
 - v0.20: Aggiunto gate di avanzamento obbligatorio post-step: nessun passaggio al task successivo senza proposta post-step esplicita e OK esplicito dell’utente.
 - v0.19: Aggiunta regola di discussione per richieste formulate come valutazione: risposta sempre motivata (adozione o controproposta) prima di aggiornare piano/implementazione.

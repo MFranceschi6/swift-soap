@@ -98,12 +98,16 @@ final class CodeGenGoldenSnapshotTests: XCTestCase {
 
     func test_generatedSources_compileInFixturePackage() throws {
         let rootPath = FileManager.default.currentDirectoryPath
+        let toolchain = FixtureSwiftToolchainSupport.current
         let fixtureRoot = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
             .appendingPathComponent("swift-soap-codegen-compile-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixtureRoot) }
 
-        let packageManifest = makeCompileFixtureManifest(rootPath: rootPath)
+        let packageManifest = makeCompileFixtureManifest(
+            rootPath: rootPath,
+            toolsVersion: toolchain.fixtureToolsVersion
+        )
         try packageManifest.write(
             to: fixtureRoot.appendingPathComponent("Package.swift"),
             atomically: true,
@@ -111,7 +115,10 @@ final class CodeGenGoldenSnapshotTests: XCTestCase {
         )
 
         for testCase in matrixCases {
-            let generatedSource = try generateSource(for: testCase)
+            let generatedSource = try generateSource(
+                for: testCase,
+                targetSwiftVersion: toolchain.codeGenTargetSwiftVersion
+            )
             let targetName = targetName(for: testCase)
             let targetDirectory = fixtureRoot.appendingPathComponent("Sources/\(targetName)", isDirectory: true)
             try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
@@ -129,7 +136,10 @@ final class CodeGenGoldenSnapshotTests: XCTestCase {
         )
     }
 
-    private func generateSource(for testCase: SoapMatrixCase) throws -> String {
+    private func generateSource(
+        for testCase: SoapMatrixCase,
+        targetSwiftVersion: SwiftLanguageVersion = SwiftLanguageVersion(major: 6, minor: 0)
+    ) throws -> String {
         let wsdl = makeWSDL(
             soapNamespaceURI: testCase.namespaceURI,
             soapPrefix: testCase.prefix,
@@ -151,7 +161,7 @@ final class CodeGenGoldenSnapshotTests: XCTestCase {
             outputMode: .build,
             runtimeTargets: [.async],
             generationScope: [.client, .server],
-            targetSwiftVersion: SwiftLanguageVersion(major: 6, minor: 0)
+            targetSwiftVersion: targetSwiftVersion
         )
 
         let generator = CodeGenerator()
@@ -159,7 +169,7 @@ final class CodeGenGoldenSnapshotTests: XCTestCase {
         return try XCTUnwrap(artifacts.first?.contents)
     }
 
-    private func makeCompileFixtureManifest(rootPath: String) -> String {
+    private func makeCompileFixtureManifest(rootPath: String, toolsVersion: String) -> String {
         let escapedRoot = rootPath.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
         let targetDefinitions = matrixCases.map { testCase in
             let target = targetName(for: testCase)
@@ -176,7 +186,7 @@ final class CodeGenGoldenSnapshotTests: XCTestCase {
         }.joined(separator: ",\n")
 
         return """
-        // swift-tools-version: 6.0
+        // swift-tools-version: \(toolsVersion)
         import PackageDescription
 
         let package = Package(
