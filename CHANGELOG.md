@@ -65,6 +65,11 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - dedicated encoder/decoder tests for precedence, mismatch, and invalid-root paths.
 
 ### Changed
+- Added a fixed local commit gate with versioned Git hooks:
+  - new `.githooks/pre-commit` and `.githooks/commit-msg` hooks wired through `scripts/commit-gate.sh`;
+  - pre-commit now enforces staged Swift lint checks and staged `Sources/` file-structure checks;
+  - commit messages now require gitmoji prefix format (emoji or `:gitmoji:` shortcode);
+  - added `scripts/install-git-hooks.sh` to activate `core.hooksPath=.githooks` in local clones.
 - Enabled Swift 6 language mode in the latest manifest lane:
   - `Package@swift-6.0.swift` now uses `swiftLanguageModes: [.v6]`.
 - Hardened compatibility lane execution for deterministic test behavior on Linux:
