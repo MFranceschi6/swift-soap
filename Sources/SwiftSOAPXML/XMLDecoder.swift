@@ -21,6 +21,7 @@ public struct XMLDecoder: Sendable {
     public struct Configuration: Sendable {
         public let rootElementName: String?
         public let itemElementName: String
+        public let fieldCodingOverrides: XMLFieldCodingOverrides
         public let dateDecodingStrategy: DateDecodingStrategy
         public let dataDecodingStrategy: DataDecodingStrategy
         public let parserConfiguration: XMLTreeParser.Configuration
@@ -28,6 +29,7 @@ public struct XMLDecoder: Sendable {
         public init(
             rootElementName: String? = nil,
             itemElementName: String = "item",
+            fieldCodingOverrides: XMLFieldCodingOverrides = XMLFieldCodingOverrides(),
             dateDecodingStrategy: DateDecodingStrategy = .multiple(
                 [.xsdDateTimeISO8601, .secondsSince1970, .millisecondsSince1970]
             ),
@@ -36,6 +38,7 @@ public struct XMLDecoder: Sendable {
         ) {
             self.rootElementName = rootElementName
             self.itemElementName = itemElementName
+            self.fieldCodingOverrides = fieldCodingOverrides
             self.dateDecodingStrategy = dateDecodingStrategy
             self.dataDecodingStrategy = dataDecodingStrategy
             self.parserConfiguration = parserConfiguration

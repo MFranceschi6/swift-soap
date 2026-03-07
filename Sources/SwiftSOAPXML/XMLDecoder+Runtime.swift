@@ -2,11 +2,13 @@ import Foundation
 
 struct _XMLDecoderOptions {
     let itemElementName: String
+    let fieldCodingOverrides: XMLFieldCodingOverrides
     let dateDecodingStrategy: XMLDecoder.DateDecodingStrategy
     let dataDecodingStrategy: XMLDecoder.DataDecodingStrategy
 
     init(configuration: XMLDecoder.Configuration) {
         self.itemElementName = configuration.itemElementName
+        self.fieldCodingOverrides = configuration.fieldCodingOverrides
         self.dateDecodingStrategy = configuration.dateDecodingStrategy
         self.dataDecodingStrategy = configuration.dataDecodingStrategy
     }
@@ -61,6 +63,10 @@ final class _XMLTreeDecoder: Decoder {
         childElements(of: element).first(where: { $0.name.localName == localName })
     }
 
+    func attribute(named localName: String, in element: XMLTreeElement) -> XMLTreeAttribute? {
+        element.attributes.first(where: { $0.name.localName == localName })
+    }
+
     func childElements(of element: XMLTreeElement) -> [XMLTreeElement] {
         element.children.compactMap { child in
             guard case .element(let childElement) = child else {
@@ -107,8 +113,54 @@ final class _XMLTreeDecoder: Decoder {
             return value as? T
         }
 
+        guard let lexical = lexicalText(of: element)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              lexical.isEmpty == false else {
+            return nil
+        }
+
+        return try decodeScalarFromLexical(
+            lexical,
+            as: type,
+            codingPath: codingPath,
+            localName: element.name.localName,
+            isAttribute: false
+        )
+    }
+
+    func isKnownScalarType(_ type: Any.Type) -> Bool {
+        type == Bool.self ||
+            type == String.self ||
+            type == Double.self ||
+            type == Float.self ||
+            type == Int.self ||
+            type == Int8.self ||
+            type == Int16.self ||
+            type == Int32.self ||
+            type == Int64.self ||
+            type == UInt.self ||
+            type == UInt8.self ||
+            type == UInt16.self ||
+            type == UInt32.self ||
+            type == UInt64.self ||
+            type == Decimal.self ||
+            type == URL.self ||
+            type == UUID.self ||
+            type == Date.self ||
+            type == Data.self
+    }
+
+    func decodeScalarFromLexical<T: Decodable>(
+        _ lexical: String,
+        as type: T.Type,
+        codingPath: [CodingKey],
+        localName: String?,
+        isAttribute: Bool
+    ) throws -> T? {
+        if type == String.self {
+            return lexical as? T
+        }
+
         if type == Bool.self {
-            let lexical = try requiredLexicalValue(from: element, codingPath: codingPath)
             guard let parsed = parseBool(lexical) else {
                 throw XMLParsingError.parseFailed(
                     message: "[XML6_5C_BOOL_PARSE_FAILED] Unable to parse Bool from '\(lexical)' at path '\(renderCodingPath(codingPath))'."
@@ -116,20 +168,18 @@ final class _XMLTreeDecoder: Decoder {
             }
             return parsed as? T
         }
-        let lexicalForIntegers = { try self.requiredLexicalValue(from: element, codingPath: codingPath) }
-        if type == Int.self { return try parseInteger(try lexicalForIntegers(), as: Int.self, codingPath: codingPath) as? T }
-        if type == Int8.self { return try parseInteger(try lexicalForIntegers(), as: Int8.self, codingPath: codingPath) as? T }
-        if type == Int16.self { return try parseInteger(try lexicalForIntegers(), as: Int16.self, codingPath: codingPath) as? T }
-        if type == Int32.self { return try parseInteger(try lexicalForIntegers(), as: Int32.self, codingPath: codingPath) as? T }
-        if type == Int64.self { return try parseInteger(try lexicalForIntegers(), as: Int64.self, codingPath: codingPath) as? T }
-        if type == UInt.self { return try parseInteger(try lexicalForIntegers(), as: UInt.self, codingPath: codingPath) as? T }
-        if type == UInt8.self { return try parseInteger(try lexicalForIntegers(), as: UInt8.self, codingPath: codingPath) as? T }
-        if type == UInt16.self { return try parseInteger(try lexicalForIntegers(), as: UInt16.self, codingPath: codingPath) as? T }
-        if type == UInt32.self { return try parseInteger(try lexicalForIntegers(), as: UInt32.self, codingPath: codingPath) as? T }
-        if type == UInt64.self { return try parseInteger(try lexicalForIntegers(), as: UInt64.self, codingPath: codingPath) as? T }
+        if type == Int.self { return try parseInteger(lexical, as: Int.self, codingPath: codingPath) as? T }
+        if type == Int8.self { return try parseInteger(lexical, as: Int8.self, codingPath: codingPath) as? T }
+        if type == Int16.self { return try parseInteger(lexical, as: Int16.self, codingPath: codingPath) as? T }
+        if type == Int32.self { return try parseInteger(lexical, as: Int32.self, codingPath: codingPath) as? T }
+        if type == Int64.self { return try parseInteger(lexical, as: Int64.self, codingPath: codingPath) as? T }
+        if type == UInt.self { return try parseInteger(lexical, as: UInt.self, codingPath: codingPath) as? T }
+        if type == UInt8.self { return try parseInteger(lexical, as: UInt8.self, codingPath: codingPath) as? T }
+        if type == UInt16.self { return try parseInteger(lexical, as: UInt16.self, codingPath: codingPath) as? T }
+        if type == UInt32.self { return try parseInteger(lexical, as: UInt32.self, codingPath: codingPath) as? T }
+        if type == UInt64.self { return try parseInteger(lexical, as: UInt64.self, codingPath: codingPath) as? T }
 
         if type == Double.self {
-            let lexical = try requiredLexicalValue(from: element, codingPath: codingPath)
             guard let parsed = Double(lexical) else {
                 throw XMLParsingError.parseFailed(
                     message: "[XML6_5C_DOUBLE_PARSE_FAILED] Unable to parse Double from '\(lexical)' at path '\(renderCodingPath(codingPath))'."
@@ -139,7 +189,6 @@ final class _XMLTreeDecoder: Decoder {
         }
 
         if type == Float.self {
-            let lexical = try requiredLexicalValue(from: element, codingPath: codingPath)
             guard let parsed = Float(lexical) else {
                 throw XMLParsingError.parseFailed(
                     message: "[XML6_5C_FLOAT_PARSE_FAILED] Unable to parse Float from '\(lexical)' at path '\(renderCodingPath(codingPath))'."
@@ -149,7 +198,6 @@ final class _XMLTreeDecoder: Decoder {
         }
 
         if type == Decimal.self {
-            let lexical = try requiredLexicalValue(from: element, codingPath: codingPath)
             guard let parsed = Decimal(string: lexical, locale: Locale(identifier: "en_US_POSIX")) else {
                 throw XMLParsingError.parseFailed(
                     message: "[XML6_5C_DECIMAL_PARSE_FAILED] Unable to parse Decimal from '\(lexical)' at path '\(renderCodingPath(codingPath))'."
@@ -159,7 +207,6 @@ final class _XMLTreeDecoder: Decoder {
         }
 
         if type == URL.self {
-            let lexical = try requiredLexicalValue(from: element, codingPath: codingPath)
             guard let parsed = URL(string: lexical) else {
                 throw XMLParsingError.parseFailed(
                     message: "[XML6_5C_URL_PARSE_FAILED] Unable to parse URL from '\(lexical)' at path '\(renderCodingPath(codingPath))'."
@@ -169,7 +216,6 @@ final class _XMLTreeDecoder: Decoder {
         }
 
         if type == UUID.self {
-            let lexical = try requiredLexicalValue(from: element, codingPath: codingPath)
             guard let parsed = UUID(uuidString: lexical) else {
                 throw XMLParsingError.parseFailed(
                     message: "[XML6_5C_UUID_PARSE_FAILED] Unable to parse UUID from '\(lexical)' at path '\(renderCodingPath(codingPath))'."
@@ -182,11 +228,11 @@ final class _XMLTreeDecoder: Decoder {
             if case .deferredToDate = options.dateDecodingStrategy {
                 return nil
             }
-            let lexical = try requiredLexicalValue(from: element, codingPath: codingPath)
             let parsed = try parseDate(
                 lexical,
                 codingPath: codingPath,
-                localName: element.name.localName
+                localName: localName,
+                isAttribute: isAttribute
             )
             return parsed as? T
         }
@@ -195,7 +241,6 @@ final class _XMLTreeDecoder: Decoder {
             if case .deferredToData = options.dataDecodingStrategy {
                 return nil
             }
-            let lexical = try requiredLexicalValue(from: element, codingPath: codingPath)
             let parsed = try parseData(lexical, codingPath: codingPath)
             return parsed as? T
         }
@@ -240,13 +285,14 @@ final class _XMLTreeDecoder: Decoder {
     private func parseDate(
         _ lexicalValue: String,
         codingPath: [CodingKey],
-        localName: String?
+        localName: String?,
+        isAttribute: Bool
     ) throws -> Date {
         let context = XMLDateCodingContext(
             codingPath: codingPath.map(\.stringValue),
             localName: localName,
             namespaceURI: nil,
-            isAttribute: false
+            isAttribute: isAttribute
         )
         if let parsed = try attemptParseDate(lexicalValue, strategy: options.dateDecodingStrategy, context: context) {
             return parsed
@@ -355,15 +401,21 @@ struct _XMLKeyedDecodingContainer<Key: CodingKey>: KeyedDecodingContainerProtoco
     }
 
     var allKeys: [Key] {
-        let names = Set(decoder.childElements(of: decoder.node).map { $0.name.localName })
+        let elementNames = decoder.childElements(of: decoder.node).map { $0.name.localName }
+        let attributeNames = decoder.node.attributes.map { $0.name.localName }
+        let names = Set(elementNames + attributeNames)
         return names.compactMap { Key(stringValue: $0) }.sorted(by: { $0.stringValue < $1.stringValue })
     }
 
     func contains(_ key: Key) -> Bool {
-        decoder.firstChild(named: key.stringValue, in: decoder.node) != nil
+        decoder.firstChild(named: key.stringValue, in: decoder.node) != nil ||
+            decoder.attribute(named: key.stringValue, in: decoder.node) != nil
     }
 
     func decodeNil(forKey key: Key) throws -> Bool {
+        if decoder.attribute(named: key.stringValue, in: decoder.node) != nil {
+            return false
+        }
         guard let element = decoder.firstChild(named: key.stringValue, in: decoder.node) else {
             return true
         }
@@ -386,6 +438,11 @@ struct _XMLKeyedDecodingContainer<Key: CodingKey>: KeyedDecodingContainerProtoco
     func decode(_ type: UInt64.Type, forKey key: Key) throws -> UInt64 { try decodeScalar(type, forKey: key) }
 
     func decode<T: Decodable>(_ type: T.Type, forKey key: Key) throws -> T {
+        let nodeKind = resolvedNodeKind(for: key, valueType: type)
+        if nodeKind == .attribute {
+            return try decodeAttribute(type, forKey: key)
+        }
+
         guard let element = decoder.firstChild(named: key.stringValue, in: decoder.node) else {
             throw XMLParsingError.parseFailed(
                 message: "[XML6_5_KEY_NOT_FOUND] Missing key '\(key.stringValue)' at path '\(renderPath(codingPath))'."
@@ -396,6 +453,11 @@ struct _XMLKeyedDecodingContainer<Key: CodingKey>: KeyedDecodingContainerProtoco
         if let scalar: T = try decoder.decodeScalar(type, from: element, codingPath: childPath) {
             return scalar
         }
+        if decoder.isKnownScalarType(type) {
+            throw XMLParsingError.parseFailed(
+                message: "[XML6_5_SCALAR_PARSE_FAILED] Unable to decode scalar key '\(key.stringValue)' at path '\(renderPath(childPath))'."
+            )
+        }
 
         let nestedDecoder = _XMLTreeDecoder(options: decoder.options, codingPath: childPath, node: element)
         return try T(from: nestedDecoder)
@@ -405,6 +467,13 @@ struct _XMLKeyedDecodingContainer<Key: CodingKey>: KeyedDecodingContainerProtoco
         keyedBy type: NestedKey.Type,
         forKey key: Key
     ) throws -> KeyedDecodingContainer<NestedKey> where NestedKey: CodingKey {
+        if let nodeKind = decoder.options.fieldCodingOverrides.nodeKind(for: codingPath, key: key.stringValue),
+           nodeKind == .attribute {
+            throw XMLParsingError.parseFailed(
+                message: "[XML6_6_ATTRIBUTE_NESTED_UNSUPPORTED] Cannot decode nested keyed container from attribute '\(key.stringValue)'."
+            )
+        }
+
         guard let element = decoder.firstChild(named: key.stringValue, in: decoder.node) else {
             throw XMLParsingError.parseFailed(
                 message: "[XML6_5_KEY_NOT_FOUND] Missing nested key '\(key.stringValue)' at path '\(renderPath(codingPath))'."
@@ -420,6 +489,13 @@ struct _XMLKeyedDecodingContainer<Key: CodingKey>: KeyedDecodingContainerProtoco
     }
 
     func nestedUnkeyedContainer(forKey key: Key) throws -> UnkeyedDecodingContainer {
+        if let nodeKind = decoder.options.fieldCodingOverrides.nodeKind(for: codingPath, key: key.stringValue),
+           nodeKind == .attribute {
+            throw XMLParsingError.parseFailed(
+                message: "[XML6_6_ATTRIBUTE_NESTED_UNSUPPORTED] Cannot decode nested unkeyed container from attribute '\(key.stringValue)'."
+            )
+        }
+
         guard let element = decoder.firstChild(named: key.stringValue, in: decoder.node) else {
             throw XMLParsingError.parseFailed(
                 message: "[XML6_5_KEY_NOT_FOUND] Missing nested unkeyed key '\(key.stringValue)' at path '\(renderPath(codingPath))'."
@@ -453,6 +529,11 @@ struct _XMLKeyedDecodingContainer<Key: CodingKey>: KeyedDecodingContainerProtoco
     }
 
     private func decodeScalar<T: Decodable>(_ type: T.Type, forKey key: Key) throws -> T {
+        let nodeKind = resolvedNodeKind(for: key, valueType: type)
+        if nodeKind == .attribute {
+            return try decodeAttribute(type, forKey: key)
+        }
+
         guard let element = decoder.firstChild(named: key.stringValue, in: decoder.node) else {
             throw XMLParsingError.parseFailed(
                 message: "[XML6_5_KEY_NOT_FOUND] Missing scalar key '\(key.stringValue)' at path '\(renderPath(codingPath))'."
@@ -469,6 +550,53 @@ struct _XMLKeyedDecodingContainer<Key: CodingKey>: KeyedDecodingContainerProtoco
     private func renderPath(_ codingPath: [CodingKey]) -> String {
         let rendered = codingPath.map(\.stringValue).joined(separator: ".")
         return rendered.isEmpty ? "<root>" : rendered
+    }
+
+    private func resolvedNodeKind<T>(for key: Key, valueType: T.Type) -> XMLFieldNodeKind {
+        if let typeOverride = valueType as? _XMLFieldKindOverrideType.Type {
+            return typeOverride._xmlFieldNodeKindOverride
+        }
+        if let override = decoder.options.fieldCodingOverrides.nodeKind(for: codingPath, key: key.stringValue) {
+            return override
+        }
+        return .element
+    }
+
+    private func decodeAttribute<T: Decodable>(_ type: T.Type, forKey key: Key) throws -> T {
+        guard let attribute = decoder.attribute(named: key.stringValue, in: decoder.node) else {
+            throw XMLParsingError.parseFailed(
+                message: "[XML6_6_ATTRIBUTE_NOT_FOUND] Missing attribute '\(key.stringValue)' at path '\(renderPath(codingPath))'."
+            )
+        }
+
+        let attributePath = codingPath + [key]
+        if let wrapperType = type as? _XMLAttributeDecodableValue.Type {
+            let wrapped = try wrapperType._xmlDecodeAttributeLexicalValue(
+                attribute.value,
+                using: decoder,
+                codingPath: attributePath,
+                key: key.stringValue
+            )
+            guard let typed = wrapped as? T else {
+                throw XMLParsingError.parseFailed(
+                    message: "[XML6_6_ATTRIBUTE_DECODE_CAST_FAILED] Unable to cast decoded attribute '\(key.stringValue)' to expected type."
+                )
+            }
+            return typed
+        }
+
+        guard let scalar = try decoder.decodeScalarFromLexical(
+            attribute.value,
+            as: type,
+            codingPath: attributePath,
+            localName: key.stringValue,
+            isAttribute: true
+        ) else {
+            throw XMLParsingError.parseFailed(
+                message: "[XML6_6_ATTRIBUTE_DECODE_UNSUPPORTED] Unable to decode attribute '\(key.stringValue)' into non-scalar type."
+            )
+        }
+        return scalar
     }
 }
 
@@ -524,6 +652,11 @@ struct _XMLUnkeyedDecodingContainer: UnkeyedDecodingContainer {
         let itemPath = codingPath + [indexKey]
         if let scalar: T = try decoder.decodeScalar(type, from: element, codingPath: itemPath) {
             return scalar
+        }
+        if decoder.isKnownScalarType(type) {
+            throw XMLParsingError.parseFailed(
+                message: "[XML6_5_SCALAR_PARSE_FAILED] Unable to decode unkeyed scalar at path '\(renderPath(itemPath))'."
+            )
         }
 
         let nestedDecoder = _XMLTreeDecoder(options: decoder.options, codingPath: itemPath, node: element)
@@ -615,6 +748,11 @@ struct _XMLSingleValueDecodingContainer: SingleValueDecodingContainer {
     func decode<T: Decodable>(_ type: T.Type) throws -> T {
         if let scalar: T = try decoder.decodeScalar(type, from: node, codingPath: codingPath) {
             return scalar
+        }
+        if decoder.isKnownScalarType(type) {
+            throw XMLParsingError.parseFailed(
+                message: "[XML6_5_SCALAR_PARSE_FAILED] Unable to decode single-value scalar at path '\(renderPath(codingPath))'."
+            )
         }
         let nestedDecoder = _XMLTreeDecoder(options: decoder.options, codingPath: codingPath, node: node)
         return try T(from: nestedDecoder)

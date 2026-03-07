@@ -2,12 +2,14 @@ import Foundation
 
 struct _XMLEncoderOptions {
     let itemElementName: String
+    let fieldCodingOverrides: XMLFieldCodingOverrides
     let nilEncodingStrategy: XMLEncoder.NilEncodingStrategy
     let dateEncodingStrategy: XMLEncoder.DateEncodingStrategy
     let dataEncodingStrategy: XMLEncoder.DataEncodingStrategy
 
     init(configuration: XMLEncoder.Configuration) {
         self.itemElementName = configuration.itemElementName
+        self.fieldCodingOverrides = configuration.fieldCodingOverrides
         self.nilEncodingStrategy = configuration.nilEncodingStrategy
         self.dateEncodingStrategy = configuration.dateEncodingStrategy
         self.dataEncodingStrategy = configuration.dataEncodingStrategy
@@ -118,7 +120,8 @@ final class _XMLTreeEncoder: Encoder {
     func boxedScalar<T: Encodable>(
         _ value: T,
         codingPath: [CodingKey],
-        localName: String?
+        localName: String?,
+        isAttribute: Bool = false
     ) throws -> String? {
         switch value {
         case let string as String:
@@ -156,7 +159,7 @@ final class _XMLTreeEncoder: Encoder {
         case let uuid as UUID:
             return uuid.uuidString
         case let date as Date:
-            return try boxedDate(date, codingPath: codingPath, localName: localName)
+            return try boxedDate(date, codingPath: codingPath, localName: localName, isAttribute: isAttribute)
         case let data as Data:
             return boxedData(data)
         default:
@@ -167,13 +170,14 @@ final class _XMLTreeEncoder: Encoder {
     private func boxedDate(
         _ date: Date,
         codingPath: [CodingKey],
-        localName: String?
+        localName: String?,
+        isAttribute: Bool
     ) throws -> String? {
         let context = XMLDateCodingContext(
             codingPath: codingPath.map(\.stringValue),
             localName: localName,
             namespaceURI: nil,
-            isAttribute: false
+            isAttribute: isAttribute
         )
 
         switch options.dateEncodingStrategy {
@@ -232,25 +236,38 @@ struct _XMLKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingContainerProtoco
     }
 
     mutating func encodeNil(forKey key: Key) throws {
+        if resolvedNodeKind(for: key, valueType: Never.self) == .attribute {
+            return
+        }
         encoder.addNilElementIfNeeded(localName: key.stringValue)
     }
 
-    mutating func encode(_ value: Bool, forKey key: Key) throws { try encodeScalar(value, forKey: key) }
-    mutating func encode(_ value: String, forKey key: Key) throws { try encodeScalar(value, forKey: key) }
-    mutating func encode(_ value: Double, forKey key: Key) throws { try encodeScalar(value, forKey: key) }
-    mutating func encode(_ value: Float, forKey key: Key) throws { try encodeScalar(value, forKey: key) }
-    mutating func encode(_ value: Int, forKey key: Key) throws { try encodeScalar(value, forKey: key) }
-    mutating func encode(_ value: Int8, forKey key: Key) throws { try encodeScalar(value, forKey: key) }
-    mutating func encode(_ value: Int16, forKey key: Key) throws { try encodeScalar(value, forKey: key) }
-    mutating func encode(_ value: Int32, forKey key: Key) throws { try encodeScalar(value, forKey: key) }
-    mutating func encode(_ value: Int64, forKey key: Key) throws { try encodeScalar(value, forKey: key) }
-    mutating func encode(_ value: UInt, forKey key: Key) throws { try encodeScalar(value, forKey: key) }
-    mutating func encode(_ value: UInt8, forKey key: Key) throws { try encodeScalar(value, forKey: key) }
-    mutating func encode(_ value: UInt16, forKey key: Key) throws { try encodeScalar(value, forKey: key) }
-    mutating func encode(_ value: UInt32, forKey key: Key) throws { try encodeScalar(value, forKey: key) }
-    mutating func encode(_ value: UInt64, forKey key: Key) throws { try encodeScalar(value, forKey: key) }
+    mutating func encode(_ value: Bool, forKey key: Key) throws { try encodeEncodable(value, forKey: key) }
+    mutating func encode(_ value: String, forKey key: Key) throws { try encodeEncodable(value, forKey: key) }
+    mutating func encode(_ value: Double, forKey key: Key) throws { try encodeEncodable(value, forKey: key) }
+    mutating func encode(_ value: Float, forKey key: Key) throws { try encodeEncodable(value, forKey: key) }
+    mutating func encode(_ value: Int, forKey key: Key) throws { try encodeEncodable(value, forKey: key) }
+    mutating func encode(_ value: Int8, forKey key: Key) throws { try encodeEncodable(value, forKey: key) }
+    mutating func encode(_ value: Int16, forKey key: Key) throws { try encodeEncodable(value, forKey: key) }
+    mutating func encode(_ value: Int32, forKey key: Key) throws { try encodeEncodable(value, forKey: key) }
+    mutating func encode(_ value: Int64, forKey key: Key) throws { try encodeEncodable(value, forKey: key) }
+    mutating func encode(_ value: UInt, forKey key: Key) throws { try encodeEncodable(value, forKey: key) }
+    mutating func encode(_ value: UInt8, forKey key: Key) throws { try encodeEncodable(value, forKey: key) }
+    mutating func encode(_ value: UInt16, forKey key: Key) throws { try encodeEncodable(value, forKey: key) }
+    mutating func encode(_ value: UInt32, forKey key: Key) throws { try encodeEncodable(value, forKey: key) }
+    mutating func encode(_ value: UInt64, forKey key: Key) throws { try encodeEncodable(value, forKey: key) }
 
     mutating func encode<T: Encodable>(_ value: T, forKey key: Key) throws {
+        try encodeEncodable(value, forKey: key)
+    }
+
+    private mutating func encodeEncodable<T: Encodable>(_ value: T, forKey key: Key) throws {
+        let nodeKind = resolvedNodeKind(for: key, valueType: T.self)
+        if nodeKind == .attribute {
+            try encodeAttribute(value, forKey: key)
+            return
+        }
+
         if let scalar = try encoder.boxedScalar(
             value,
             codingPath: codingPath + [key],
@@ -311,22 +328,50 @@ struct _XMLKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingContainerProtoco
         )
     }
 
-    private mutating func encodeScalar<T: Encodable>(_ value: T, forKey key: Key) throws {
-        guard let scalar = try encoder.boxedScalar(
-            value,
-            codingPath: codingPath + [key],
-            localName: key.stringValue
-        ) else {
-            throw XMLParsingError.parseFailed(
-                message: "[XML6_4_KEYED_SCALAR] Unable to box scalar for key '\(key.stringValue)'."
-            )
-        }
-        try encodeScalarString(scalar, forKey: key)
-    }
-
     private func encodeScalarString(_ value: String, forKey key: Key) throws {
         let child = encoder.node.makeChild(localName: key.stringValue)
         child.appendText(value)
+    }
+
+    private mutating func encodeAttribute<T: Encodable>(_ value: T, forKey key: Key) throws {
+        let lexicalValue: String
+        if let provider = value as? _XMLAttributeEncodableValue {
+            lexicalValue = try provider._xmlAttributeLexicalValue(
+                using: encoder,
+                codingPath: codingPath + [key],
+                key: key.stringValue
+            )
+        } else if let scalar = try encoder.boxedScalar(
+            value,
+            codingPath: codingPath + [key],
+            localName: key.stringValue,
+            isAttribute: true
+        ) {
+            lexicalValue = scalar
+        } else {
+            throw XMLParsingError.parseFailed(
+                message: "[XML6_6_ATTRIBUTE_ENCODE_UNSUPPORTED] Key '\(key.stringValue)' cannot be encoded as XML attribute because value is not scalar."
+            )
+        }
+
+        encoder.node.attributes.append(
+            XMLTreeAttribute(
+                name: XMLQualifiedName(localName: key.stringValue),
+                value: lexicalValue
+            )
+        )
+    }
+
+    private func resolvedNodeKind<T>(for key: Key, valueType: T.Type) -> XMLFieldNodeKind {
+        if let typeOverride = valueType as? _XMLFieldKindOverrideType.Type {
+            return typeOverride._xmlFieldNodeKindOverride
+        }
+
+        if let override = encoder.options.fieldCodingOverrides.nodeKind(for: codingPath, key: key.stringValue) {
+            return override
+        }
+
+        return .element
     }
 }
 

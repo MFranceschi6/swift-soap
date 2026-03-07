@@ -25,6 +25,7 @@ public struct XMLEncoder: Sendable {
     public struct Configuration: Sendable {
         public let rootElementName: String?
         public let itemElementName: String
+        public let fieldCodingOverrides: XMLFieldCodingOverrides
         public let nilEncodingStrategy: NilEncodingStrategy
         public let dateEncodingStrategy: DateEncodingStrategy
         public let dataEncodingStrategy: DataEncodingStrategy
@@ -33,6 +34,7 @@ public struct XMLEncoder: Sendable {
         public init(
             rootElementName: String? = nil,
             itemElementName: String = "item",
+            fieldCodingOverrides: XMLFieldCodingOverrides = XMLFieldCodingOverrides(),
             nilEncodingStrategy: NilEncodingStrategy = .emptyElement,
             dateEncodingStrategy: DateEncodingStrategy = .xsdDateTimeISO8601,
             dataEncodingStrategy: DataEncodingStrategy = .base64,
@@ -40,6 +42,7 @@ public struct XMLEncoder: Sendable {
         ) {
             self.rootElementName = rootElementName
             self.itemElementName = itemElementName
+            self.fieldCodingOverrides = fieldCodingOverrides
             self.nilEncodingStrategy = nilEncodingStrategy
             self.dateEncodingStrategy = dateEncodingStrategy
             self.dataEncodingStrategy = dataEncodingStrategy
