@@ -15,6 +15,7 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
     func test_generatedRuntime_asyncAndNIO_roundtripAndFault_forRPCEncodedSOAP12() throws {
         let fileManager = FileManager.default
         let repositoryRoot = fileManager.currentDirectoryPath
+        let toolchain = FixtureSwiftToolchainSupport.current
         let fixtureRoot = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
             .appendingPathComponent("swift-soap-generated-runtime-\(UUID().uuidString)", isDirectory: true)
 
@@ -22,10 +23,14 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
         defer { try? fileManager.removeItem(at: fixtureRoot) }
 
         try prepareFixtureLayout(at: fixtureRoot)
-        try writeFixturePackageManifest(at: fixtureRoot, repositoryRoot: repositoryRoot)
+        try writeFixturePackageManifest(
+            at: fixtureRoot,
+            repositoryRoot: repositoryRoot,
+            toolchain: toolchain
+        )
         try writeFixtureWSDL(at: fixtureRoot)
-        try writeFixtureRuntimeTests(at: fixtureRoot)
-        try generateFixtureSources(at: fixtureRoot)
+        try writeFixtureRuntimeTests(at: fixtureRoot, toolchain: toolchain)
+        try generateFixtureSources(at: fixtureRoot, toolchain: toolchain)
 
         let generatedFileURL = fixtureRoot
             .appendingPathComponent("Sources/GeneratedRuntime/GeneratedRuntime+GeneratedSOAP.swift")
@@ -58,13 +63,17 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
         )
     }
 
-    private func writeFixturePackageManifest(at fixtureRoot: URL, repositoryRoot: String) throws {
+    private func writeFixturePackageManifest(
+        at fixtureRoot: URL,
+        repositoryRoot: String,
+        toolchain: FixtureSwiftToolchainSupport
+    ) throws {
         let escapedRepositoryRoot = repositoryRoot
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
 
         let packageManifest = """
-        // swift-tools-version: 6.1
+        // swift-tools-version: \(toolchain.fixtureToolsVersion)
         import PackageDescription
 
         let package = Package(
@@ -161,7 +170,7 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
         )
     }
 
-    private func generateFixtureSources(at fixtureRoot: URL) throws {
+    private func generateFixtureSources(at fixtureRoot: URL, toolchain: FixtureSwiftToolchainSupport) throws {
         let configuration = CodeGenConfiguration(
             wsdlPath: "Fixtures/service.wsdl",
             moduleName: "GeneratedRuntime",
@@ -170,7 +179,7 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
             exportOutputDirectory: "Sources/GeneratedRuntime",
             runtimeTargets: [.async, .nio],
             generationScope: [.client, .server],
-            targetSwiftVersion: SwiftLanguageVersion(major: 6, minor: 0),
+            targetSwiftVersion: toolchain.codeGenTargetSwiftVersion,
             syntaxFeatures: [:]
         )
 
@@ -180,7 +189,8 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
     }
 
     // swiftlint:disable:next function_body_length
-    private func writeFixtureRuntimeTests(at fixtureRoot: URL) throws {
+    private func writeFixtureRuntimeTests(at fixtureRoot: URL, toolchain: FixtureSwiftToolchainSupport) throws {
+        let asyncThrowsClause = toolchain.asyncThrowsClause
         let tests = #"""
         import Foundation
         import NIOCore
@@ -269,7 +279,7 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
         }
 
         private struct AsyncServiceImplementation: MatrixServiceMatrixPortAsyncService {
-            func transform(request: InputMessagePayload) async throws(any Error) -> SOAPOperationResponse<OutputMessagePayload, FaultMessageFaultDetail> {
+            func transform(request: InputMessagePayload) async __ASYNC_THROWS_CLAUSE__ -> SOAPOperationResponse<OutputMessagePayload, FaultMessageFaultDetail> {
                 if request.value == "fault" {
                     let fault = try SOAPFault<FaultMessageFaultDetail>(
                         faultCode: .server,
@@ -306,14 +316,14 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
         }
 
         private actor AsyncLoopbackServer: SOAPServerAsync {
-            private typealias ErasedHandler = @Sendable (Any) async throws(any Error) -> Any
+            private typealias ErasedHandler = @Sendable (Any) async __ASYNC_THROWS_CLAUSE__ -> Any
 
             private var handlers: [String: ErasedHandler] = [:]
 
             func register<Operation: SOAPOperationContract>(
                 _ operation: Operation.Type,
                 handler: @escaping SOAPAsyncOperationHandler<Operation>
-            ) async throws(any Error) {
+            ) async __ASYNC_THROWS_CLAUSE__ {
                 handlers[operation.operationIdentifier.rawValue] = { request in
                     guard let typedRequest = request as? Operation.RequestPayload else {
                         throw SOAPCoreError.invalidPayload(message: "Invalid async request payload for operation.")
@@ -322,13 +332,13 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
                 }
             }
 
-            func start() async throws(any Error) {}
-            func stop() async throws(any Error) {}
+            func start() async __ASYNC_THROWS_CLAUSE__ {}
+            func stop() async __ASYNC_THROWS_CLAUSE__ {}
 
             func dispatch<Operation: SOAPOperationContract>(
                 _ operation: Operation.Type,
                 request: Operation.RequestPayload
-            ) async throws(any Error) -> SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload> {
+            ) async __ASYNC_THROWS_CLAUSE__ -> SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload> {
                 guard let handler = handlers[operation.operationIdentifier.rawValue] else {
                     throw SOAPCoreError.invalidPayload(message: "Missing async operation handler.")
                 }
@@ -349,7 +359,7 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
                 _ operation: Operation.Type,
                 request: Operation.RequestPayload,
                 endpointURL: URL
-            ) async throws(any Error) -> SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload> {
+            ) async __ASYNC_THROWS_CLAUSE__ -> SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload> {
                 _ = endpointURL
                 return try await server.dispatch(operation, request: request)
             }
@@ -417,6 +427,7 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
             }
         }
         """#
+            .replacingOccurrences(of: "__ASYNC_THROWS_CLAUSE__", with: asyncThrowsClause)
 
         try tests.write(
             to: fixtureRoot.appendingPathComponent("Tests/GeneratedRuntimeTests/GeneratedRuntimeRoundtripTests.swift"),

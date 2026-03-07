@@ -13,13 +13,18 @@ final class PluginBuildIntegrationTests: XCTestCase {
     func test_buildToolPlugin_generatesSourcesInPluginWorkDirectory() throws {
         let fileManager = FileManager.default
         let repositoryRoot = fileManager.currentDirectoryPath
+        let toolchain = FixtureSwiftToolchainSupport.current
 
         let fixtureRoot = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
             .appendingPathComponent("swift-soap-plugin-fixture-\(UUID().uuidString)", isDirectory: true)
         try fileManager.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: fixtureRoot) }
 
-        try makeFixturePackage(at: fixtureRoot, repositoryRoot: repositoryRoot)
+        try makeFixturePackage(
+            at: fixtureRoot,
+            repositoryRoot: repositoryRoot,
+            toolchain: toolchain
+        )
         try runSwiftBuild(packagePath: fixtureRoot)
 
         let expectedGeneratedFileName = "PluginFixture+GeneratedSOAP.swift"
@@ -34,13 +39,17 @@ final class PluginBuildIntegrationTests: XCTestCase {
         }
     }
 
-    private func makeFixturePackage(at fixtureRoot: URL, repositoryRoot: String) throws {
+    private func makeFixturePackage(
+        at fixtureRoot: URL,
+        repositoryRoot: String,
+        toolchain: FixtureSwiftToolchainSupport
+    ) throws {
         let escapedRepositoryRoot = repositoryRoot
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
 
         let packageManifest = """
-        // swift-tools-version: 6.1
+        // swift-tools-version: \(toolchain.fixtureToolsVersion)
         import PackageDescription
 
         let package = Package(
@@ -108,7 +117,7 @@ final class PluginBuildIntegrationTests: XCTestCase {
           "exportOutputDirectory": "Sources/Generated",
           "runtimeTargets": ["async"],
           "generationScope": ["client", "server"],
-          "targetSwiftVersion": "6.0",
+          "targetSwiftVersion": "\(toolchain.codeGenTargetSwiftVersionString)",
           "syntaxFeatures": {}
         }
         """

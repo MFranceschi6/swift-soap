@@ -30,6 +30,7 @@ public struct XMLNodeMappingMacro: ExtensionMacro {
             return []
         }
 
+        let extendedType = type.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let entries = mapping.entries.map { entry in
             "\"\(escapeStringLiteral(entry.key))\": .\(entry.value.rawValue)"
         }
@@ -42,7 +43,7 @@ public struct XMLNodeMappingMacro: ExtensionMacro {
 
         let extensionDecl = try ExtensionDeclSyntax(
             """
-            extension \(type.trimmed): XMLFieldCodingOverrideProvider {
+            extension \(raw: extendedType): XMLFieldCodingOverrideProvider {
                 static var xmlFieldNodeKinds: [String: XMLFieldNodeKind] {
                     \(raw: dictionaryLiteral)
                 }
