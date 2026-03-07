@@ -20,7 +20,7 @@ public struct XMLQualifiedName: Sendable, Hashable, Codable {
     }
 
     public var qualifiedName: String {
-        if let prefix {
+        if let prefix = prefix {
             return "\(prefix):\(localName)"
         }
         return localName

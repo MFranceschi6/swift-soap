@@ -110,7 +110,8 @@ public struct XMLNamespaceResolver: Sendable {
     }
 
     public func deterministicPrefix(forNamespaceURI namespaceURI: String, preferredPrefix: String? = nil) -> String? {
-        if let preferredPrefix, self.namespaceURI(forPrefix: preferredPrefix) == namespaceURI {
+        if let preferredPrefix = preferredPrefix,
+           self.namespaceURI(forPrefix: preferredPrefix) == namespaceURI {
             return preferredPrefix
         }
 

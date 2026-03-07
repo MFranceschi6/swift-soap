@@ -156,7 +156,7 @@ public struct XMLTreeParser: Sendable {
         try incrementNodeCount(parseState: &parseState, context: "element")
 
         let nodeName = string(fromXMLCharPointer: nodePointer.pointee.name)
-        guard let nodeName, nodeName.isEmpty == false else {
+        guard let nodeName = nodeName, nodeName.isEmpty == false else {
             throw XMLParsingError.nodeCreationFailed(name: "<unknown>", message: "XML element name is missing.")
         }
 
@@ -346,7 +346,7 @@ public struct XMLTreeParser: Sendable {
     }
 
     private func string(fromXMLCharPointer pointer: UnsafePointer<xmlChar>?) -> String? {
-        guard let pointer else {
+        guard let pointer = pointer else {
             return nil
         }
         return String(cString: UnsafePointer<CChar>(OpaquePointer(pointer)))
@@ -390,7 +390,7 @@ public struct XMLTreeParser: Sendable {
         code: String,
         context: String
     ) throws {
-        guard let limit else {
+        guard let limit = limit else {
             return
         }
 

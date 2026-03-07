@@ -61,7 +61,7 @@ final class _XMLTreeElementBox {
     }
 
     func makeElement() -> XMLTreeElement {
-        let children = contents.map { content in
+        let children: [XMLTreeNode] = contents.map { content in
             switch content {
             case .text(let value):
                 return XMLTreeNode.text(value)
