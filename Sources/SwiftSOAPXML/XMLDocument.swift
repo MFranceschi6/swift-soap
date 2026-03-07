@@ -7,6 +7,62 @@ import SwiftSOAPXMLOwnership6
 
 // swiftlint:disable type_body_length
 public struct XMLDocument: Sendable {
+    public struct ParsingConfiguration: Sendable, Hashable {
+        public enum ExternalResourceLoadingPolicy: Sendable, Hashable {
+            case forbidNetwork
+            case allowNetwork
+        }
+
+        public enum DTDLoadingPolicy: Sendable, Hashable {
+            case forbid
+            case allow
+        }
+
+        public enum EntityDecodingPolicy: Sendable, Hashable {
+            case preserveReferences
+            case substituteEntities
+        }
+
+        public let trimBlankTextNodes: Bool
+        public let externalResourceLoadingPolicy: ExternalResourceLoadingPolicy
+        public let dtdLoadingPolicy: DTDLoadingPolicy
+        public let entityDecodingPolicy: EntityDecodingPolicy
+
+        public init(
+            trimBlankTextNodes: Bool = true,
+            externalResourceLoadingPolicy: ExternalResourceLoadingPolicy = .forbidNetwork,
+            dtdLoadingPolicy: DTDLoadingPolicy = .forbid,
+            entityDecodingPolicy: EntityDecodingPolicy = .preserveReferences
+        ) {
+            self.trimBlankTextNodes = trimBlankTextNodes
+            self.externalResourceLoadingPolicy = externalResourceLoadingPolicy
+            self.dtdLoadingPolicy = dtdLoadingPolicy
+            self.entityDecodingPolicy = entityDecodingPolicy
+        }
+
+        fileprivate var libxmlOptions: Int32 {
+            var options: Int32 = 0
+
+            if trimBlankTextNodes {
+                options |= Int32(XML_PARSE_NOBLANKS.rawValue)
+            }
+
+            if externalResourceLoadingPolicy == .forbidNetwork {
+                options |= Int32(XML_PARSE_NONET.rawValue)
+            }
+
+            if dtdLoadingPolicy == .allow {
+                options |= Int32(XML_PARSE_DTDLOAD.rawValue)
+            }
+
+            if entityDecodingPolicy == .substituteEntities {
+                options |= Int32(XML_PARSE_NOENT.rawValue)
+            }
+
+            return options
+        }
+    }
+
     private final class Storage: @unchecked Sendable {
         let documentPointer: xmlDocPtr
 
@@ -47,9 +103,18 @@ public struct XMLDocument: Sendable {
         }
     }
 
-    public init(data: Data, logger: Logger? = nil) throws(XMLParsingError) {
+    public init(
+        data: Data,
+        parsingConfiguration: ParsingConfiguration = ParsingConfiguration(),
+        logger: Logger? = nil
+    ) throws(XMLParsingError) {
         do {
-            try self.init(parseDocument: data, sourceURL: nil, logger: logger ?? Self.defaultLogger())
+            try self.init(
+                parseDocument: data,
+                sourceURL: nil,
+                parsingConfiguration: parsingConfiguration,
+                logger: logger ?? Self.defaultLogger()
+            )
         } catch let error as XMLParsingError {
             throw error
         } catch {
@@ -57,9 +122,19 @@ public struct XMLDocument: Sendable {
         }
     }
 
-    public init(data: Data, sourceURL: URL, logger: Logger? = nil) throws(XMLParsingError) {
+    public init(
+        data: Data,
+        sourceURL: URL,
+        parsingConfiguration: ParsingConfiguration = ParsingConfiguration(),
+        logger: Logger? = nil
+    ) throws(XMLParsingError) {
         do {
-            try self.init(parseDocument: data, sourceURL: sourceURL, logger: logger ?? Self.defaultLogger())
+            try self.init(
+                parseDocument: data,
+                sourceURL: sourceURL,
+                parsingConfiguration: parsingConfiguration,
+                logger: logger ?? Self.defaultLogger()
+            )
         } catch let error as XMLParsingError {
             throw error
         } catch {
@@ -67,7 +142,11 @@ public struct XMLDocument: Sendable {
         }
     }
 
-    public init(url: URL, logger: Logger? = nil) throws(XMLParsingError) {
+    public init(
+        url: URL,
+        parsingConfiguration: ParsingConfiguration = ParsingConfiguration(),
+        logger: Logger? = nil
+    ) throws(XMLParsingError) {
         let effectiveLogger: Logger = logger ?? Self.defaultLogger()
 
         let data: Data
@@ -81,7 +160,12 @@ public struct XMLDocument: Sendable {
         }
 
         do {
-            try self.init(parseDocument: data, sourceURL: url, logger: effectiveLogger)
+            try self.init(
+                parseDocument: data,
+                sourceURL: url,
+                parsingConfiguration: parsingConfiguration,
+                logger: effectiveLogger
+            )
         } catch let error as XMLParsingError {
             throw error
         } catch {
@@ -101,15 +185,38 @@ public struct XMLDocument: Sendable {
         )
     }
 
-    public init(data: Data, logger: Logger? = nil) throws {
-        try self.init(parseDocument: data, sourceURL: nil, logger: logger ?? Self.defaultLogger())
+    public init(
+        data: Data,
+        parsingConfiguration: ParsingConfiguration = ParsingConfiguration(),
+        logger: Logger? = nil
+    ) throws {
+        try self.init(
+            parseDocument: data,
+            sourceURL: nil,
+            parsingConfiguration: parsingConfiguration,
+            logger: logger ?? Self.defaultLogger()
+        )
     }
 
-    public init(data: Data, sourceURL: URL, logger: Logger? = nil) throws {
-        try self.init(parseDocument: data, sourceURL: sourceURL, logger: logger ?? Self.defaultLogger())
+    public init(
+        data: Data,
+        sourceURL: URL,
+        parsingConfiguration: ParsingConfiguration = ParsingConfiguration(),
+        logger: Logger? = nil
+    ) throws {
+        try self.init(
+            parseDocument: data,
+            sourceURL: sourceURL,
+            parsingConfiguration: parsingConfiguration,
+            logger: logger ?? Self.defaultLogger()
+        )
     }
 
-    public init(url: URL, logger: Logger? = nil) throws {
+    public init(
+        url: URL,
+        parsingConfiguration: ParsingConfiguration = ParsingConfiguration(),
+        logger: Logger? = nil
+    ) throws {
         let effectiveLogger: Logger = logger ?? Self.defaultLogger()
 
         let data: Data
@@ -121,7 +228,12 @@ public struct XMLDocument: Sendable {
                 message: "Unable to load XML data from URL '\(url.absoluteString)'."
             )
         }
-        try self.init(parseDocument: data, sourceURL: url, logger: effectiveLogger)
+        try self.init(
+            parseDocument: data,
+            sourceURL: url,
+            parsingConfiguration: parsingConfiguration,
+            logger: effectiveLogger
+        )
     }
     #endif
 
@@ -146,12 +258,22 @@ public struct XMLDocument: Sendable {
         self.storage = Storage(documentPointer: documentPointer)
     }
 
-    private init(parseDocument data: Data, sourceURL: URL?, logger: Logger) throws {
+    private init(
+        parseDocument data: Data,
+        sourceURL: URL?,
+        parsingConfiguration: ParsingConfiguration,
+        logger: Logger
+    ) throws {
         LibXML2.ensureInitialized()
 
         self.logger = logger
 
-        let options = Int32(XML_PARSE_NOBLANKS.rawValue)
+        let options = parsingConfiguration.libxmlOptions
+        let byteCount = try XMLInteropBounds.checkedNonNegativeInt32Length(
+            data.count,
+            code: "XML6_2H_INT32_INPUT_LENGTH",
+            context: "xmlReadMemory input"
+        )
 
         let documentPointer: xmlDocPtr? = data.withUnsafeBytes { rawBuffer in
             guard let baseAddress = rawBuffer.baseAddress else {
@@ -163,10 +285,10 @@ public struct XMLDocument: Sendable {
 
             if let sourceURL = sourceURL {
                 return sourceURL.absoluteString.withCString { urlCString in
-                    xmlReadMemory(bufferPointer, Int32(rawBuffer.count), urlCString, nil, options)
+                    xmlReadMemory(bufferPointer, byteCount, urlCString, nil, options)
                 }
             } else {
-                return xmlReadMemory(bufferPointer, Int32(rawBuffer.count), nil, nil, options)
+                return xmlReadMemory(bufferPointer, byteCount, nil, nil, options)
             }
         }
 

@@ -46,6 +46,10 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - added QName-aware model fields and first `types/XSD` model extraction (complex/simple types, sequence/choice, attributes);
   - added local `xsd:import`/`xsd:include` resolution support with explicit remote-location rejection in v1;
   - added SOAP binding matrix parsing metadata (SOAP 1.1/1.2, document/rpc, literal/encoded).
+- Added XML Step 6 foundations in `SwiftSOAPXML`:
+  - public XML AST types (`XMLQualifiedName`, `XMLTreeAttribute`, `XMLTreeNode`, `XMLTreeElement`, `XMLTreeDocument`) with structural metadata for xmlsig-oriented evolution;
+  - parser/writer bridge (`XMLTreeParser`, `XMLTreeWriter`) for `Data/XMLDocument <-> XMLTreeDocument`;
+  - namespace engine (`XMLNamespaceResolver`, `XMLNamespaceValidator`) with deterministic resolution and explicit diagnostics.
 
 ### Changed
 - Enabled Swift 6 language mode in the latest manifest lane:
@@ -126,6 +130,14 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - require `#if swift(>=...)` gating when language syntax/features differ across supported lanes;
   - require equivalent fallback implementation for older lanes to preserve public behavior.
   - require proactive adoption of version-specific syntax where possible, with mandatory cross-version parity when public APIs are impacted.
+- Hardened XML parser/writer safety and namespace policy surface:
+  - introduced explicit XML parsing security policy controls in `XMLDocument` (network/entity/DTD handling);
+  - added configurable parser/writer limits with default-unlimited semantics where safe and mandatory caps on concrete safety vectors;
+  - added deterministic hardening diagnostics and tests for limit violations;
+  - added explicit writer namespace validation mode (`strict` default, `synthesizeMissingDeclarations` opt-in).
+- Updated `agent.md` execution workflow:
+  - mandatory post-step advancement gate (no auto-advance without explicit user OK);
+  - mandatory automatic commit proposal at significant technical checkpoints.
 
 ## [2026-03-04]
 

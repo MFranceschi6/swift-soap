@@ -3,14 +3,89 @@ import SwiftSOAPCompatibility
 import SwiftSOAPXMLCShim
 
 public struct XMLTreeWriter: Sendable {
+    public enum NamespaceValidationMode: Sendable, Hashable {
+        case strict
+        case synthesizeMissingDeclarations
+
+        fileprivate var validatorMode: XMLNamespaceValidator.Mode {
+            switch self {
+            case .strict:
+                return .strict
+            case .synthesizeMissingDeclarations:
+                return .synthesizeMissingDeclarations
+            }
+        }
+    }
+
+    public struct Limits: Sendable, Hashable {
+        public let maxDepth: Int
+        public let maxNodeCount: Int?
+        public let maxOutputBytes: Int?
+        public let maxTextNodeBytes: Int?
+        public let maxCDATABlockBytes: Int?
+        public let maxCommentBytes: Int?
+
+        public init(
+            maxDepth: Int = 4096,
+            maxNodeCount: Int? = nil,
+            maxOutputBytes: Int? = nil,
+            maxTextNodeBytes: Int? = nil,
+            maxCDATABlockBytes: Int? = nil,
+            maxCommentBytes: Int? = nil
+        ) {
+            self.maxDepth = max(1, maxDepth)
+            self.maxNodeCount = maxNodeCount
+            self.maxOutputBytes = maxOutputBytes
+            self.maxTextNodeBytes = maxTextNodeBytes
+            self.maxCDATABlockBytes = maxCDATABlockBytes
+            self.maxCommentBytes = maxCommentBytes
+        }
+
+        public static func untrustedInputDefault() -> Limits {
+            Limits(
+                maxDepth: 256,
+                maxNodeCount: 200_000,
+                maxOutputBytes: 16 * 1024 * 1024,
+                maxTextNodeBytes: 1 * 1024 * 1024,
+                maxCDATABlockBytes: 4 * 1024 * 1024,
+                maxCommentBytes: 256 * 1024
+            )
+        }
+    }
+
     public struct Configuration: Sendable, Hashable {
         public let encoding: String
         public let prettyPrinted: Bool
+        public let namespaceValidationMode: NamespaceValidationMode
+        public let limits: Limits
 
-        public init(encoding: String = "UTF-8", prettyPrinted: Bool = false) {
+        public init(
+            encoding: String = "UTF-8",
+            prettyPrinted: Bool = false,
+            namespaceValidationMode: NamespaceValidationMode = .strict,
+            limits: Limits = Limits()
+        ) {
             self.encoding = encoding
             self.prettyPrinted = prettyPrinted
+            self.namespaceValidationMode = namespaceValidationMode
+            self.limits = limits
         }
+
+        public static func untrustedInputProfile(
+            encoding: String = "UTF-8",
+            prettyPrinted: Bool = false
+        ) -> Configuration {
+            Configuration(
+                encoding: encoding,
+                prettyPrinted: prettyPrinted,
+                namespaceValidationMode: .strict,
+                limits: .untrustedInputDefault()
+            )
+        }
+    }
+
+    private struct WriteState {
+        var nodeCount: Int = 0
     }
 
     public let configuration: Configuration
@@ -31,11 +106,24 @@ public struct XMLTreeWriter: Sendable {
     }
 
     public func writeData(_ treeDocument: XMLTreeDocument) throws(XMLParsingError) -> Data {
-        let xmlDocument = try writeDocument(treeDocument)
-        return try xmlDocument.serializedData(
-            encoding: configuration.encoding,
-            prettyPrinted: configuration.prettyPrinted
-        )
+        do {
+            let xmlDocument = try writeDocument(treeDocument)
+            let xmlData = try xmlDocument.serializedData(
+                encoding: configuration.encoding,
+                prettyPrinted: configuration.prettyPrinted
+            )
+            try ensureLimit(
+                actual: xmlData.count,
+                limit: configuration.limits.maxOutputBytes,
+                code: "XML6_2H_MAX_OUTPUT_BYTES",
+                context: "serialized XML output bytes"
+            )
+            return xmlData
+        } catch let error as XMLParsingError {
+            throw error
+        } catch {
+            throw XMLParsingError.other(underlyingError: error, message: "Unexpected XML tree writer error.")
+        }
     }
     #else
     public func writeDocument(_ treeDocument: XMLTreeDocument) throws -> XMLDocument {
@@ -44,14 +132,32 @@ public struct XMLTreeWriter: Sendable {
 
     public func writeData(_ treeDocument: XMLTreeDocument) throws -> Data {
         let xmlDocument = try writeDocument(treeDocument)
-        return try xmlDocument.serializedData(
+        let xmlData = try xmlDocument.serializedData(
             encoding: configuration.encoding,
             prettyPrinted: configuration.prettyPrinted
         )
+        try ensureLimit(
+            actual: xmlData.count,
+            limit: configuration.limits.maxOutputBytes,
+            code: "XML6_2H_MAX_OUTPUT_BYTES",
+            context: "serialized XML output bytes"
+        )
+        return xmlData
     }
     #endif
 
     private func writeDocumentImpl(_ treeDocument: XMLTreeDocument) throws -> XMLDocument {
+        do {
+            try XMLNamespaceValidator.validate(
+                document: treeDocument,
+                mode: configuration.namespaceValidationMode.validatorMode
+            )
+        } catch let resolutionError as XMLNamespaceResolutionError {
+            throw XMLParsingError.parseFailed(
+                message: "[XML6_3_NAMESPACE_VALIDATION] Namespace validation failed: \(resolutionError)."
+            )
+        }
+
         let root = treeDocument.root
         let rootNamespace = makeNamespace(from: root.name)
 
@@ -66,15 +172,27 @@ public struct XMLTreeWriter: Sendable {
             throw XMLParsingError.documentCreationFailed(message: "Unable to create root element in XML document.")
         }
 
-        try writeElementContent(root, into: rootNode, in: xmlDocument)
+        var writeState = WriteState()
+        try writeElementContent(
+            root,
+            into: rootNode,
+            in: xmlDocument,
+            depth: 1,
+            writeState: &writeState
+        )
         return xmlDocument
     }
 
     private func writeElementContent(
         _ element: XMLTreeElement,
         into node: XMLNode,
-        in document: XMLDocument
+        in document: XMLDocument,
+        depth: Int,
+        writeState: inout WriteState
     ) throws {
+        try ensureDepth(depth)
+        try incrementNodeCount(writeState: &writeState, context: "element")
+
         try applyNamespaceDeclarations(element.namespaceDeclarations, to: node)
         try applyAttributes(element.attributes, to: node)
 
@@ -87,12 +205,39 @@ public struct XMLTreeWriter: Sendable {
                     namespace: namespace
                 )
                 try document.appendChild(childNode, to: node)
-                try writeElementContent(childElement, into: childNode, in: document)
+                try writeElementContent(
+                    childElement,
+                    into: childNode,
+                    in: document,
+                    depth: depth + 1,
+                    writeState: &writeState
+                )
             case .text(let value):
+                try ensureUTF8Length(
+                    value,
+                    limit: configuration.limits.maxTextNodeBytes,
+                    code: "XML6_2H_MAX_TEXT_NODE_BYTES",
+                    context: "text node"
+                )
+                try incrementNodeCount(writeState: &writeState, context: "text node")
                 try appendTextNode(value, to: node)
             case .cdata(let value):
+                try ensureUTF8Length(
+                    value,
+                    limit: configuration.limits.maxCDATABlockBytes,
+                    code: "XML6_2H_MAX_CDATA_BYTES",
+                    context: "CDATA node"
+                )
+                try incrementNodeCount(writeState: &writeState, context: "CDATA node")
                 try appendCDATASection(value, to: node)
             case .comment(let value):
+                try ensureUTF8Length(
+                    value,
+                    limit: configuration.limits.maxCommentBytes,
+                    code: "XML6_2H_MAX_COMMENT_BYTES",
+                    context: "comment node"
+                )
+                try incrementNodeCount(writeState: &writeState, context: "comment node")
                 try appendComment(value, to: node)
             }
         }
@@ -279,6 +424,12 @@ public struct XMLTreeWriter: Sendable {
         }
 
         let utf8Bytes = Array(value.utf8)
+        let cdataLength = try XMLInteropBounds.checkedNonNegativeInt32Length(
+            utf8Bytes.count,
+            code: "XML6_2H_INT32_CDATA_LENGTH",
+            context: "xmlNewCDataBlock input"
+        )
+
         let cdataNodePointer = utf8Bytes.withUnsafeBufferPointer { buffer -> xmlNodePtr? in
             guard let baseAddress = buffer.baseAddress else {
                 return xmlNewCDataBlock(documentPointer, nil, 0)
@@ -286,7 +437,7 @@ public struct XMLTreeWriter: Sendable {
             return xmlNewCDataBlock(
                 documentPointer,
                 UnsafePointer<xmlChar>(baseAddress),
-                Int32(buffer.count)
+                cdataLength
             )
         }
 
@@ -322,5 +473,54 @@ public struct XMLTreeWriter: Sendable {
             return nil
         }
         return String(cString: UnsafePointer<CChar>(OpaquePointer(pointer)))
+    }
+
+    private func ensureDepth(_ depth: Int) throws {
+        guard depth <= configuration.limits.maxDepth else {
+            throw XMLParsingError.parseFailed(
+                message: "[XML6_2H_MAX_DEPTH] XML depth exceeded max depth (\(configuration.limits.maxDepth)): \(depth)."
+            )
+        }
+    }
+
+    private func incrementNodeCount(writeState: inout WriteState, context: String) throws {
+        writeState.nodeCount += 1
+        try ensureLimit(
+            actual: writeState.nodeCount,
+            limit: configuration.limits.maxNodeCount,
+            code: "XML6_2H_MAX_NODE_COUNT",
+            context: "total written nodes after \(context)"
+        )
+    }
+
+    private func ensureUTF8Length(
+        _ value: String,
+        limit: Int?,
+        code: String,
+        context: String
+    ) throws {
+        try ensureLimit(
+            actual: value.utf8.count,
+            limit: limit,
+            code: code,
+            context: context
+        )
+    }
+
+    private func ensureLimit(
+        actual: Int,
+        limit: Int?,
+        code: String,
+        context: String
+    ) throws {
+        guard let limit else {
+            return
+        }
+
+        guard actual <= limit else {
+            throw XMLParsingError.parseFailed(
+                message: "[\(code)] \(context) exceeded max (\(limit)): \(actual)."
+            )
+        }
     }
 }

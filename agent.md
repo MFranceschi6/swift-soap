@@ -8,6 +8,7 @@ L’obiettivo è produrre modifiche di alta qualità, con API pubbliche curate, 
 - Scrivere codice **comprensibile, mantenibile e coerente** con lo stile del progetto.
 - Dare priorità al design di **API pubbliche**: chiare, documentate, stabili e facili da usare.
 - Implementare **test affidabili** con focus su **coverage ~90%** (tendente a 90% ma pragmatica, priorità su path critici).
+- Privilegiare **completezza reale dell'implementazione** rispetto alla velocità di chiusura dei task.
 
 ## 3) Ambito (Scope)
 ### In scope
@@ -209,6 +210,19 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 8. Produrre un report di step completo prima della chiusura dello step.
 9. Autoreview: naming, edge cases, access control, backward compatibility.
 
+### 11.x) Execution discipline (no "half-implemented" closure)
+- Ogni item di piano deve essere completato come comportamento reale e usabile, non come scaffolding o placeholder.
+- È obbligatorio scomporre un item in sotto-step intermedi quando necessario; la scomposizione non cambia il Definition of Done dell'item padre.
+- Un item può essere marcato `done` solo se:
+  - il flusso funzionale previsto è realmente implementato end-to-end;
+  - non restano TODO bloccanti o fallback temporanei che sostituiscono il comportamento richiesto;
+  - esistono test pertinenti (unit/integration/golden dove applicabile) che validano il comportamento.
+- Se un item è solo parzialmente implementato, deve restare `in_progress` (o essere riaperto) con gap esplicitati in checklist/report.
+- Gli step successivi sullo stesso codice, dopo chiusura item, devono essere solo:
+  - aggiunta di funzionalità nuove, oppure
+  - correzioni/miglioramenti di comportamento già implementato.
+- Non è ammesso usare step successivi per "finire davvero" item già dichiarati completati; in tal caso l'item precedente va riaperto formalmente.
+
 ### 11.0) Epic workflow (globale)
 - Ogni step di roadmap è trattato come **epic** e deve avere un branch dedicato con naming:
   - `codex/epic-<n>-<slug>`.
@@ -273,6 +287,79 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
   - perché sono stati fatti,
   - quali trade-off sono stati accettati.
 
+## 11.3) Task Completion and Production Readiness
+- Un task è considerato completato solo quando l'implementazione è pienamente funzionante e production-ready.
+- Implementazioni intermedie (codice temporaneo, scaffolding, logica sperimentale, draft functions) sono ammesse durante lo sviluppo, ma non devono restare nella versione finale del task.
+- Il codice finale non deve contenere placeholder, `TODO`, rami logici incompleti, comportamenti mock pensati per sostituzione successiva o stub implementations.
+- Tutti i componenti richiesti dal task devono essere implementati dove rilevante: logica core, integrazioni, configurazione, validazione ed error handling.
+- L'implementazione finale deve compilare/eseguire correttamente e integrarsi con il codebase esistente senza introdurre regressioni funzionali.
+- Se un task non può essere completato integralmente per requisiti mancanti, dipendenze mancanti o incertezza architetturale, l'agent deve riportare esplicitamente il blocker invece di lasciare implementazioni parziali.
+- Le implementazioni parziali non possono mai essere considerate un task completato.
+- Se emergono conflitti o ambiguità tra queste regole e altre regole già presenti in `agent.md`, l'agent deve fermarsi e chiedere chiarimento all'utente prima di procedere.
+
+### 11.3.1) Implementation Planning Before Development
+- Prima di iniziare l'implementazione di un task, l'agent deve spiegare brevemente l'approccio di sviluppo previsto.
+- Questa spiegazione deve includere:
+  - strategia di implementazione complessiva;
+  - scelte architetturali o di design rilevanti;
+  - come la funzionalità sarà esposta tramite interfacce, funzioni, classi o API;
+  - input e output attesi dei metodi/componenti chiave;
+  - motivazione delle decisioni di design più importanti.
+- Per componenti come codec, parser, service layer o librerie, l'agent deve chiarire prima dello sviluppo:
+  - metodi pubblici esposti;
+  - parametri accettati;
+  - valori restituiti;
+  - perché l'interfaccia scelta è adatta al caso d'uso.
+- Lo scopo di questo passaggio è rendere visibili e revisionabili le decisioni implementative prima dello sviluppo, evitando scelte architetturali errate e rework non necessario.
+
+### 11.3.2) Task Completion Checklist
+- [ ] The implementation is fully functional.
+- [ ] No TODOs, placeholders, stubs, or temporary implementations remain.
+- [ ] All functions contain real and complete logic.
+- [ ] Error handling and edge cases are implemented where appropriate.
+- [ ] The code integrates correctly with the rest of the project.
+- [ ] The code runs/compiles successfully.
+- [ ] The implementation is clean, readable, and maintainable.
+
+### 11.4) Post-step rebaseline & follow-up routing (mandatory)
+- Dopo la chiusura di ogni step/subtask rilevante (specialmente quando impatta architettura, runtime, sicurezza o API pubbliche), l'agent deve eseguire automaticamente un passaggio post-step, senza attendere richiesta esplicita dell'utente.
+- Il passaggio post-step deve includere, in ordine:
+  - analisi tecnica dello stato reale dello step appena completato (copertura funzionale, limiti, rischi residui);
+  - proposta di eventuali sotto-step aggiuntivi necessari prima di proseguire (hardening o altri lavori tecnici realmente bloccanti per gli step successivi);
+  - confronto/validazione con l'utente quando serve una scelta di priorità/scope.
+- Gate di avanzamento obbligatorio:
+  - l'agent non può iniziare il task successivo finché non ha presentato esplicitamente il post-step (analisi + proposta) e non ha ricevuto un OK esplicito dall'utente.
+  - in assenza di OK esplicito, lo stato resta sul task corrente e non è consentito avanzare in autonomia al task seguente.
+- Se emergono attività aggiuntive bloccanti per la fase corrente:
+  - devono essere integrate nel piano attuale e nella checklist/subtasks correnti, con dipendenze e Definition of Done espliciti.
+- Le attività non bloccanti per la fase corrente:
+  - non devono espandere lo scope dello step in corso;
+  - devono essere registrate in un documento di follow-up separato, pensato per l'esecuzione dopo il completamento della fase corrente.
+- Il documento follow-up deve contenere almeno:
+  - motivazione del rinvio,
+  - stato iniziale `pending`,
+  - criterio di attivazione (quando va eseguito),
+  - criterio di chiusura.
+- Se il passaggio post-step evidenzia ambiguità, trade-off non banali o alternative equivalenti, l'agent deve fare domande puntuali all'utente prima di finalizzare piano/priorità.
+
+### 11.5) Regola di discussione su richieste di valutazione
+- Quando l'utente formula una richiesta come domanda di verifica/valutazione (es. "hai fatto X?", "ha senso aggiungere Y?", "aggiungi anche Z?"), l'agent deve trattarla come momento di discussione tecnica, non come ordine automatico di implementazione.
+- In questi casi la risposta deve sempre essere decisionale e motivata:
+  - proposta di aggiunta/modifica con razionale e impatto, oppure
+  - motivazione del perché non adottare la richiesta così com'è, con eventuale controproposta concreta.
+- Le motivazioni non devono basarsi su rinvii generici legati al "quando farlo"; il timing operativo è responsabilità dell'agent secondo il piano e le dipendenze.
+- Se la scelta richiede preferenze di prodotto/priorità non deducibili dal contesto, l'agent deve porre domande puntuali all'utente prima di finalizzare la decisione.
+- Solo dopo l'allineamento decisionale con l'utente, l'agent aggiorna piano/checklist/subtasks ed eventualmente implementa.
+
+### 11.6) Checkpoint commit proposal (mandatory)
+- Quando un checkpoint tecnico è significativo (es. subtask chiuso con gate verdi, hardening completato, milestone architetturale), l'agent deve proporre automaticamente un commit, senza attendere una richiesta esplicita dell'utente.
+- La proposta di commit deve includere:
+  - scope del checkpoint,
+  - file principali coinvolti,
+  - messaggio commit proposto coerente con la convenzione.
+- Se il working tree contiene cambi non correlati al checkpoint, l'agent deve proporre staging selettivo e commit separati.
+- Questo requisito non sostituisce le regole di compliance pre-commit e non consente di saltare i gate richiesti.
+
 ## 12) Versioning
 - Seguire SemVer.
 - Deprecare prima di rimuovere e documentare migrazione.
@@ -302,6 +389,10 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
 - Non introdurre dipendenze senza verifica licenza e reputazione.
 
 ## 14) Changelog dell’agent
+- v0.21: Aggiunta regola obbligatoria di proposta automatica commit ai checkpoint tecnici significativi.
+- v0.20: Aggiunto gate di avanzamento obbligatorio post-step: nessun passaggio al task successivo senza proposta post-step esplicita e OK esplicito dell’utente.
+- v0.19: Aggiunta regola di discussione per richieste formulate come valutazione: risposta sempre motivata (adozione o controproposta) prima di aggiornare piano/implementazione.
+- v0.18: Aggiunto workflow post-step obbligatorio: analisi dello step completato, proposta/validazione di eventuali sotto-step bloccanti nel piano corrente e registrazione separata dei follow-up non bloccanti.
 - v0.17: Aggiunto obbligo di validazione locale multi-lane prima della chiusura degli step impattati da differenze tra versioni Swift, con motivazione esplicita in report quando una lane non è applicabile.
 - v0.16: Introdotto modello compatibilità a lane (`runtime-5.4`, `tooling-5.6+`, `quality-5.10`, `latest`) con regole su separazione EventLoop vs async, matrice CI aggiornata e strategia multi-manifest (`Package.swift`, `Package@swift-5.6.swift`, `Package@swift-6.0.swift`).
 - v0.15: Aggiunto workflow globale a epic (branch `codex/epic-*`, PR dedicate su main) e policy commit intermedi: rilassamento limitato a lint/test con build+report obbligatori; commit finale epic con gate standard completi.

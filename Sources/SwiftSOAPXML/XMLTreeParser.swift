@@ -3,12 +3,73 @@ import SwiftSOAPCompatibility
 import SwiftSOAPXMLCShim
 
 public struct XMLTreeParser: Sendable {
+    public struct Limits: Sendable, Hashable {
+        public let maxInputBytes: Int?
+        public let maxDepth: Int
+        public let maxNodeCount: Int?
+        public let maxAttributesPerElement: Int?
+        public let maxTextNodeBytes: Int?
+        public let maxCDATABlockBytes: Int?
+
+        public init(
+            maxInputBytes: Int? = nil,
+            maxDepth: Int = 4096,
+            maxNodeCount: Int? = nil,
+            maxAttributesPerElement: Int? = nil,
+            maxTextNodeBytes: Int? = nil,
+            maxCDATABlockBytes: Int? = nil
+        ) {
+            self.maxInputBytes = maxInputBytes
+            self.maxDepth = max(1, maxDepth)
+            self.maxNodeCount = maxNodeCount
+            self.maxAttributesPerElement = maxAttributesPerElement
+            self.maxTextNodeBytes = maxTextNodeBytes
+            self.maxCDATABlockBytes = maxCDATABlockBytes
+        }
+
+        public static func untrustedInputDefault() -> Limits {
+            Limits(
+                maxInputBytes: 16 * 1024 * 1024,
+                maxDepth: 256,
+                maxNodeCount: 200_000,
+                maxAttributesPerElement: 256,
+                maxTextNodeBytes: 1 * 1024 * 1024,
+                maxCDATABlockBytes: 4 * 1024 * 1024
+            )
+        }
+    }
+
     public struct Configuration: Sendable, Hashable {
         public let preserveWhitespaceTextNodes: Bool
+        public let parsingConfiguration: XMLDocument.ParsingConfiguration
+        public let limits: Limits
 
-        public init(preserveWhitespaceTextNodes: Bool = false) {
+        public init(
+            preserveWhitespaceTextNodes: Bool = false,
+            parsingConfiguration: XMLDocument.ParsingConfiguration = XMLDocument.ParsingConfiguration(),
+            limits: Limits = Limits()
+        ) {
             self.preserveWhitespaceTextNodes = preserveWhitespaceTextNodes
+            self.parsingConfiguration = parsingConfiguration
+            self.limits = limits
         }
+
+        public static func untrustedInputProfile(preserveWhitespaceTextNodes: Bool = false) -> Configuration {
+            Configuration(
+                preserveWhitespaceTextNodes: preserveWhitespaceTextNodes,
+                parsingConfiguration: XMLDocument.ParsingConfiguration(
+                    trimBlankTextNodes: !preserveWhitespaceTextNodes,
+                    externalResourceLoadingPolicy: .forbidNetwork,
+                    dtdLoadingPolicy: .forbid,
+                    entityDecodingPolicy: .preserveReferences
+                ),
+                limits: .untrustedInputDefault()
+            )
+        }
+    }
+
+    private struct ParseState {
+        var nodeCount: Int = 0
     }
 
     public let configuration: Configuration
@@ -19,8 +80,24 @@ public struct XMLTreeParser: Sendable {
 
     #if swift(>=6.0)
     public func parse(data: Data) throws(XMLParsingError) -> XMLTreeDocument {
-        let document = try XMLDocument(data: data)
-        return try parse(document: document)
+        do {
+            try ensureLimit(
+                actual: data.count,
+                limit: configuration.limits.maxInputBytes,
+                code: "XML6_2H_MAX_INPUT_BYTES",
+                context: "XML input bytes"
+            )
+
+            let document = try XMLDocument(
+                data: data,
+                parsingConfiguration: effectiveParsingConfiguration()
+            )
+            return try parse(document: document)
+        } catch let error as XMLParsingError {
+            throw error
+        } catch {
+            throw XMLParsingError.other(underlyingError: error, message: "Unexpected XML tree parse error.")
+        }
     }
 
     public func parse(document: XMLDocument) throws(XMLParsingError) -> XMLTreeDocument {
@@ -34,7 +111,17 @@ public struct XMLTreeParser: Sendable {
     }
     #else
     public func parse(data: Data) throws -> XMLTreeDocument {
-        let document = try XMLDocument(data: data)
+        try ensureLimit(
+            actual: data.count,
+            limit: configuration.limits.maxInputBytes,
+            code: "XML6_2H_MAX_INPUT_BYTES",
+            context: "XML input bytes"
+        )
+
+        let document = try XMLDocument(
+            data: data,
+            parsingConfiguration: effectiveParsingConfiguration()
+        )
         return try parse(document: document)
     }
 
@@ -48,12 +135,26 @@ public struct XMLTreeParser: Sendable {
             throw XMLParsingError.parseFailed(message: "XML document does not contain a root element.")
         }
 
-        let rootElement = try parseElement(nodePointer: rootNode.nodePointer, sourceOrder: 0)
+        var parseState = ParseState()
+        let rootElement = try parseElement(
+            nodePointer: rootNode.nodePointer,
+            sourceOrder: 0,
+            depth: 1,
+            parseState: &parseState
+        )
         let metadata = parseDocumentMetadata(from: rootNode.nodePointer.pointee.doc)
         return XMLTreeDocument(root: rootElement, metadata: metadata)
     }
 
-    private func parseElement(nodePointer: xmlNodePtr, sourceOrder: Int?) throws -> XMLTreeElement {
+    private func parseElement(
+        nodePointer: xmlNodePtr,
+        sourceOrder: Int?,
+        depth: Int,
+        parseState: inout ParseState
+    ) throws -> XMLTreeElement {
+        try ensureDepth(depth)
+        try incrementNodeCount(parseState: &parseState, context: "element")
+
         let nodeName = string(fromXMLCharPointer: nodePointer.pointee.name)
         guard let nodeName, nodeName.isEmpty == false else {
             throw XMLParsingError.nodeCreationFailed(name: "<unknown>", message: "XML element name is missing.")
@@ -64,8 +165,19 @@ public struct XMLTreeParser: Sendable {
         let qualifiedName = XMLQualifiedName(localName: nodeName, namespaceURI: namespaceURI, prefix: prefix)
 
         let attributes = parseAttributes(nodePointer: nodePointer)
+        try ensureLimit(
+            actual: attributes.count,
+            limit: configuration.limits.maxAttributesPerElement,
+            code: "XML6_2H_MAX_ATTRIBUTES_PER_ELEMENT",
+            context: "attributes per element"
+        )
+
         let namespaceDeclarations = parseNamespaceDeclarations(nodePointer: nodePointer)
-        let children = try parseChildren(nodePointer: nodePointer)
+        let children = try parseChildren(
+            nodePointer: nodePointer,
+            depth: depth,
+            parseState: &parseState
+        )
         let metadata = XMLNodeStructuralMetadata(
             sourceOrder: sourceOrder,
             originalPrefix: prefix,
@@ -127,7 +239,11 @@ public struct XMLTreeParser: Sendable {
         return declarations
     }
 
-    private func parseChildren(nodePointer: xmlNodePtr) throws -> [XMLTreeNode] {
+    private func parseChildren(
+        nodePointer: xmlNodePtr,
+        depth: Int,
+        parseState: inout ParseState
+    ) throws -> [XMLTreeNode] {
         var children: [XMLTreeNode] = []
         var childPointer = nodePointer.pointee.children
         var sourceOrder = 0
@@ -140,17 +256,39 @@ public struct XMLTreeParser: Sendable {
 
             switch currentChildPointer.pointee.type {
             case XML_ELEMENT_NODE:
-                let element = try parseElement(nodePointer: currentChildPointer, sourceOrder: sourceOrder)
+                let element = try parseElement(
+                    nodePointer: currentChildPointer,
+                    sourceOrder: sourceOrder,
+                    depth: depth + 1,
+                    parseState: &parseState
+                )
                 children.append(.element(element))
             case XML_TEXT_NODE:
                 let value = string(fromNodeContent: currentChildPointer)
                 if shouldKeepTextNode(value) {
+                    try ensureUTF8Length(
+                        value,
+                        limit: configuration.limits.maxTextNodeBytes,
+                        code: "XML6_2H_MAX_TEXT_NODE_BYTES",
+                        context: "text node"
+                    )
+                    try incrementNodeCount(parseState: &parseState, context: "text node")
                     children.append(.text(value))
                 }
             case XML_CDATA_SECTION_NODE:
-                children.append(.cdata(string(fromNodeContent: currentChildPointer)))
+                let value = string(fromNodeContent: currentChildPointer)
+                try ensureUTF8Length(
+                    value,
+                    limit: configuration.limits.maxCDATABlockBytes,
+                    code: "XML6_2H_MAX_CDATA_BYTES",
+                    context: "CDATA node"
+                )
+                try incrementNodeCount(parseState: &parseState, context: "CDATA node")
+                children.append(.cdata(value))
             case XML_COMMENT_NODE:
-                children.append(.comment(string(fromNodeContent: currentChildPointer)))
+                let value = string(fromNodeContent: currentChildPointer)
+                try incrementNodeCount(parseState: &parseState, context: "comment node")
+                children.append(.comment(value))
             default:
                 break
             }
@@ -178,6 +316,21 @@ public struct XMLTreeParser: Sendable {
         )
     }
 
+    private func effectiveParsingConfiguration() -> XMLDocument.ParsingConfiguration {
+        guard configuration.preserveWhitespaceTextNodes,
+              configuration.parsingConfiguration.trimBlankTextNodes
+        else {
+            return configuration.parsingConfiguration
+        }
+
+        return XMLDocument.ParsingConfiguration(
+            trimBlankTextNodes: false,
+            externalResourceLoadingPolicy: configuration.parsingConfiguration.externalResourceLoadingPolicy,
+            dtdLoadingPolicy: configuration.parsingConfiguration.dtdLoadingPolicy,
+            entityDecodingPolicy: configuration.parsingConfiguration.entityDecodingPolicy
+        )
+    }
+
     private func string(fromNodeContent nodePointer: xmlNodePtr) -> String {
         guard let contentPointer = nodePointer.pointee.content else {
             return ""
@@ -197,5 +350,54 @@ public struct XMLTreeParser: Sendable {
             return nil
         }
         return String(cString: UnsafePointer<CChar>(OpaquePointer(pointer)))
+    }
+
+    private func ensureDepth(_ depth: Int) throws {
+        guard depth <= configuration.limits.maxDepth else {
+            throw XMLParsingError.parseFailed(
+                message: "[XML6_2H_MAX_DEPTH] XML depth exceeded max depth (\(configuration.limits.maxDepth)): \(depth)."
+            )
+        }
+    }
+
+    private func incrementNodeCount(parseState: inout ParseState, context: String) throws {
+        parseState.nodeCount += 1
+        try ensureLimit(
+            actual: parseState.nodeCount,
+            limit: configuration.limits.maxNodeCount,
+            code: "XML6_2H_MAX_NODE_COUNT",
+            context: "total parsed nodes after \(context)"
+        )
+    }
+
+    private func ensureUTF8Length(
+        _ value: String,
+        limit: Int?,
+        code: String,
+        context: String
+    ) throws {
+        try ensureLimit(
+            actual: value.utf8.count,
+            limit: limit,
+            code: code,
+            context: context
+        )
+    }
+
+    private func ensureLimit(
+        actual: Int,
+        limit: Int?,
+        code: String,
+        context: String
+    ) throws {
+        guard let limit else {
+            return
+        }
+
+        guard actual <= limit else {
+            throw XMLParsingError.parseFailed(
+                message: "[\(code)] \(context) exceeded max (\(limit)): \(actual)."
+            )
+        }
     }
 }
