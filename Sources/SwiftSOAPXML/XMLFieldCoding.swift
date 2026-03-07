@@ -31,6 +31,14 @@ public struct XMLFieldCodingOverrides: Sendable, Hashable, Codable {
     }
 }
 
+public protocol XMLFieldCodingOverrideProvider {
+    static var xmlFieldNodeKinds: [String: XMLFieldNodeKind] { get }
+}
+
+public extension XMLFieldCodingOverrideProvider {
+    static var xmlFieldNodeKinds: [String: XMLFieldNodeKind] { [:] }
+}
+
 protocol _XMLFieldKindOverrideType {
     static var _xmlFieldNodeKindOverride: XMLFieldNodeKind { get }
 }

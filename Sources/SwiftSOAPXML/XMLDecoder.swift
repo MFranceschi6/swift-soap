@@ -98,7 +98,8 @@ public struct XMLDecoder: Sendable {
         let decoder = _XMLTreeDecoder(
             options: options,
             codingPath: [],
-            node: tree.root
+            node: tree.root,
+            fieldNodeKinds: _xmlFieldNodeKinds(for: T.self)
         )
         return try T(from: decoder)
     }

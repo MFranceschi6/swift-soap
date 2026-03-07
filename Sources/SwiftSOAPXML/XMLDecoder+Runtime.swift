@@ -37,13 +37,20 @@ struct _XMLDecodingKey: CodingKey {
 final class _XMLTreeDecoder: Decoder {
     let options: _XMLDecoderOptions
     let node: XMLTreeElement
+    let fieldNodeKinds: [String: XMLFieldNodeKind]
     var codingPath: [CodingKey]
     var userInfo: [CodingUserInfoKey: Any] { [:] }
 
-    init(options: _XMLDecoderOptions, codingPath: [CodingKey], node: XMLTreeElement) {
+    init(
+        options: _XMLDecoderOptions,
+        codingPath: [CodingKey],
+        node: XMLTreeElement,
+        fieldNodeKinds: [String: XMLFieldNodeKind] = [:]
+    ) {
         self.options = options
         self.codingPath = codingPath
         self.node = node
+        self.fieldNodeKinds = fieldNodeKinds
     }
 
     func container<Key>(keyedBy type: Key.Type) throws -> KeyedDecodingContainer<Key> where Key: CodingKey {
@@ -459,7 +466,12 @@ struct _XMLKeyedDecodingContainer<Key: CodingKey>: KeyedDecodingContainerProtoco
             )
         }
 
-        let nestedDecoder = _XMLTreeDecoder(options: decoder.options, codingPath: childPath, node: element)
+        let nestedDecoder = _XMLTreeDecoder(
+            options: decoder.options,
+            codingPath: childPath,
+            node: element,
+            fieldNodeKinds: _xmlFieldNodeKinds(for: T.self)
+        )
         return try T(from: nestedDecoder)
     }
 
@@ -511,7 +523,12 @@ struct _XMLKeyedDecodingContainer<Key: CodingKey>: KeyedDecodingContainerProtoco
     }
 
     func superDecoder() throws -> Decoder {
-        _XMLTreeDecoder(options: decoder.options, codingPath: codingPath, node: decoder.node)
+        _XMLTreeDecoder(
+            options: decoder.options,
+            codingPath: codingPath,
+            node: decoder.node,
+            fieldNodeKinds: decoder.fieldNodeKinds
+        )
     }
 
     func superDecoder(forKey key: Key) throws -> Decoder {
@@ -555,6 +572,9 @@ struct _XMLKeyedDecodingContainer<Key: CodingKey>: KeyedDecodingContainerProtoco
     private func resolvedNodeKind<T>(for key: Key, valueType: T.Type) -> XMLFieldNodeKind {
         if let typeOverride = valueType as? _XMLFieldKindOverrideType.Type {
             return typeOverride._xmlFieldNodeKindOverride
+        }
+        if let override = decoder.fieldNodeKinds[key.stringValue] {
+            return override
         }
         if let override = decoder.options.fieldCodingOverrides.nodeKind(for: codingPath, key: key.stringValue) {
             return override
@@ -659,7 +679,12 @@ struct _XMLUnkeyedDecodingContainer: UnkeyedDecodingContainer {
             )
         }
 
-        let nestedDecoder = _XMLTreeDecoder(options: decoder.options, codingPath: itemPath, node: element)
+        let nestedDecoder = _XMLTreeDecoder(
+            options: decoder.options,
+            codingPath: itemPath,
+            node: element,
+            fieldNodeKinds: _xmlFieldNodeKinds(for: T.self)
+        )
         return try T(from: nestedDecoder)
     }
 
@@ -754,7 +779,12 @@ struct _XMLSingleValueDecodingContainer: SingleValueDecodingContainer {
                 message: "[XML6_5_SCALAR_PARSE_FAILED] Unable to decode single-value scalar at path '\(renderPath(codingPath))'."
             )
         }
-        let nestedDecoder = _XMLTreeDecoder(options: decoder.options, codingPath: codingPath, node: node)
+        let nestedDecoder = _XMLTreeDecoder(
+            options: decoder.options,
+            codingPath: codingPath,
+            node: node,
+            fieldNodeKinds: _xmlFieldNodeKinds(for: T.self)
+        )
         return try T(from: nestedDecoder)
     }
 

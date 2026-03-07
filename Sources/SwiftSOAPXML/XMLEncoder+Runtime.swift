@@ -1,5 +1,12 @@
 import Foundation
 
+func _xmlFieldNodeKinds<T>(for type: T.Type) -> [String: XMLFieldNodeKind] {
+    guard let provider = type as? XMLFieldCodingOverrideProvider.Type else {
+        return [:]
+    }
+    return provider.xmlFieldNodeKinds
+}
+
 struct _XMLEncoderOptions {
     let itemElementName: String
     let fieldCodingOverrides: XMLFieldCodingOverrides
@@ -95,13 +102,20 @@ struct _XMLEncodingKey: CodingKey {
 final class _XMLTreeEncoder: Encoder {
     let options: _XMLEncoderOptions
     let node: _XMLTreeElementBox
+    let fieldNodeKinds: [String: XMLFieldNodeKind]
     var codingPath: [CodingKey]
     var userInfo: [CodingUserInfoKey: Any] { [:] }
 
-    init(options: _XMLEncoderOptions, codingPath: [CodingKey], node: _XMLTreeElementBox) {
+    init(
+        options: _XMLEncoderOptions,
+        codingPath: [CodingKey],
+        node: _XMLTreeElementBox,
+        fieldNodeKinds: [String: XMLFieldNodeKind] = [:]
+    ) {
         self.options = options
         self.codingPath = codingPath
         self.node = node
+        self.fieldNodeKinds = fieldNodeKinds
     }
 
     func container<Key>(keyedBy type: Key.Type) -> KeyedEncodingContainer<Key> where Key: CodingKey {
@@ -281,7 +295,8 @@ struct _XMLKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingContainerProtoco
         let nestedEncoder = _XMLTreeEncoder(
             options: encoder.options,
             codingPath: codingPath + [key],
-            node: child
+            node: child,
+            fieldNodeKinds: _xmlFieldNodeKinds(for: T.self)
         )
         try value.encode(to: nestedEncoder)
     }
@@ -367,6 +382,10 @@ struct _XMLKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingContainerProtoco
             return typeOverride._xmlFieldNodeKindOverride
         }
 
+        if let override = encoder.fieldNodeKinds[key.stringValue] {
+            return override
+        }
+
         if let override = encoder.options.fieldCodingOverrides.nodeKind(for: codingPath, key: key.stringValue) {
             return override
         }
@@ -425,7 +444,8 @@ struct _XMLUnkeyedEncodingContainer: UnkeyedEncodingContainer {
         let nestedEncoder = _XMLTreeEncoder(
             options: encoder.options,
             codingPath: codingPath + [currentIndexKey],
-            node: itemNode
+            node: itemNode,
+            fieldNodeKinds: _xmlFieldNodeKinds(for: T.self)
         )
         try value.encode(to: nestedEncoder)
     }
@@ -523,7 +543,13 @@ struct _XMLSingleValueEncodingContainer: SingleValueEncodingContainer {
             encoder.node.appendText(scalar)
             return
         }
-        try value.encode(to: encoder)
+        let nestedEncoder = _XMLTreeEncoder(
+            options: encoder.options,
+            codingPath: codingPath,
+            node: encoder.node,
+            fieldNodeKinds: _xmlFieldNodeKinds(for: T.self)
+        )
+        try value.encode(to: nestedEncoder)
     }
 
     private mutating func encodeScalar<T: Encodable>(_ value: T) throws {

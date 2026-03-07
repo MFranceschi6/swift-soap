@@ -1,6 +1,7 @@
 // swift-tools-version: 6.1
 
 import PackageDescription
+import CompilerPluginSupport
 
 let package = Package(
     name: "SwiftSOAP",
@@ -15,6 +16,7 @@ let package = Package(
         .library(name: "SwiftSOAPServerAsync", targets: ["SwiftSOAPServerAsync"]),
         .library(name: "SwiftSOAPClientNIO", targets: ["SwiftSOAPClientNIO"]),
         .library(name: "SwiftSOAPServerNIO", targets: ["SwiftSOAPServerNIO"]),
+        .library(name: "SwiftSOAPXMLMacros", targets: ["SwiftSOAPXMLMacros"]),
         .plugin(name: "SwiftSOAPCodeGenPlugin", targets: ["SwiftSOAPCodeGenPlugin"]),
     ],
     dependencies: [
@@ -108,6 +110,22 @@ let package = Package(
                 .product(name: "Logging", package: "swift-log")
             ]
         ),
+        .macro(
+            name: "SwiftSOAPXMLMacroImplementation",
+            dependencies: [
+                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+                .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
+                .product(name: "SwiftSyntaxBuilder", package: "swift-syntax"),
+                .product(name: "SwiftDiagnostics", package: "swift-syntax")
+            ]
+        ),
+        .target(
+            name: "SwiftSOAPXMLMacros",
+            dependencies: [
+                "SwiftSOAPXML",
+                "SwiftSOAPXMLMacroImplementation"
+            ]
+        ),
         .testTarget(
             name: "SwiftSOAPCoreTests",
             dependencies: ["SwiftSOAPCore"]
@@ -136,7 +154,10 @@ let package = Package(
         ),
         .testTarget(
             name: "SwiftSOAPXMLTests",
-            dependencies: ["SwiftSOAPXML"]
+            dependencies: [
+                "SwiftSOAPXML",
+                "SwiftSOAPXMLMacros"
+            ]
         ),
         .testTarget(
             name: "SwiftSOAPWSDLTests",

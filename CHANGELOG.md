@@ -50,6 +50,10 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - public XML AST types (`XMLQualifiedName`, `XMLTreeAttribute`, `XMLTreeNode`, `XMLTreeElement`, `XMLTreeDocument`) with structural metadata for xmlsig-oriented evolution;
   - parser/writer bridge (`XMLTreeParser`, `XMLTreeWriter`) for `Data/XMLDocument <-> XMLTreeDocument`;
   - namespace engine (`XMLNamespaceResolver`, `XMLNamespaceValidator`) with deterministic resolution and explicit diagnostics.
+- Added XML Step `6.6M` macro mapping support on modern lanes:
+  - new `SwiftSOAPXMLMacros` + `SwiftSOAPXMLMacroImplementation` targets in `Package@swift-6.0.swift` and `Package@swift-6.1.swift`;
+  - new `@XMLNodeMapping(attributes:elements:)` macro generating `XMLFieldCodingOverrideProvider` metadata for runtime mapping parity with wrappers/overrides;
+  - macro parity coverage in `XMLFieldMappingTests`.
 
 ### Changed
 - Enabled Swift 6 language mode in the latest manifest lane:
