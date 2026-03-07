@@ -8,7 +8,7 @@ on:
 
 jobs:
   runtime-5_4:
-    name: runtime-5.4
+    name: runtime-5.4 (linux)
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -39,7 +39,7 @@ jobs:
             '
 
   tooling-5_6_plus:
-    name: tooling-5.6+
+    name: tooling-5.6+ (linux)
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -79,8 +79,12 @@ jobs:
             '
 
   macro-5_9:
-    name: macro-5.9
-    runs-on: ubuntu-22.04
+    name: macro-5.9 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14]
     steps:
       - uses: actions/checkout@v4
 
@@ -96,6 +100,7 @@ jobs:
         run: ls -1 Package*.swift
 
       - name: Install System Dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libxml2-dev
@@ -110,19 +115,39 @@ jobs:
             exit 1
           fi
 
+      - name: Install SwiftLint (macOS)
+        if: runner.os == 'macOS'
+        run: brew install swiftlint
+
+      - name: Run SwiftLint (macOS)
+        if: runner.os == 'macOS'
+        run: swiftlint lint --reporter github-actions-logging
+
+      - name: Run SwiftLint (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workdir" \
+            -w /workdir \
+            ghcr.io/realm/swiftlint:latest \
+            swiftlint lint --reporter github-actions-logging
+
       - name: Build
         run: swift build -c debug
 
       - name: Run Tests
-        run: |
-          swift test --jobs 1 --parallel --num-workers 1
+        run: swift test --jobs 1 --parallel --num-workers 1
 
       - name: Verify plugin manifest contract
         run: swift test -c debug --filter PluginManifestContractTests
 
   quality-5_10:
-    name: quality-5.10
-    runs-on: macos-14
+    name: quality-5.10 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14]
     steps:
       - uses: actions/checkout@v4
 
@@ -137,6 +162,12 @@ jobs:
       - name: List versioned manifests
         run: ls -1 Package*.swift
 
+      - name: Install System Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxml2-dev
+
       - name: Validate manifest selection for quality lane (5.10)
         run: |
           swift package dump-package > /tmp/quality-5.10-dump-package.json
@@ -147,11 +178,22 @@ jobs:
             exit 1
           fi
 
-      - name: Install SwiftLint
+      - name: Install SwiftLint (macOS)
+        if: runner.os == 'macOS'
         run: brew install swiftlint
 
-      - name: Run SwiftLint
+      - name: Run SwiftLint (macOS)
+        if: runner.os == 'macOS'
         run: swiftlint lint --reporter github-actions-logging
+
+      - name: Run SwiftLint (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workdir" \
+            -w /workdir \
+            ghcr.io/realm/swiftlint:latest \
+            swiftlint lint --reporter github-actions-logging
 
       - name: Build
         run: swift build -c debug
@@ -162,23 +204,31 @@ jobs:
       - name: Enforce Code Coverage (>= 90%)
         run: |
           BIN_PATH=$(swift build --show-bin-path)
-          PROFDATA="$BIN_PATH/codecov/default.profdata"
-          TEST_BUNDLE=$(find "$BIN_PATH" -name "*.xctest" -type d | head -n 1)
-          TEST_BIN="$TEST_BUNDLE/Contents/MacOS/$(basename "$TEST_BUNDLE" .xctest)"
-          LLVM_COV="$(dirname "$(which swift)")/llvm-cov"
-          if [ ! -x "$LLVM_COV" ]; then LLVM_COV="xcrun llvm-cov"; fi
+          PROFDATA=$(find "$BIN_PATH/codecov" -name "default.profdata" -type f | head -n 1)
+          TEST_BUNDLE=$(find "$BIN_PATH" -name "*.xctest" | head -n 1)
 
-          if [ ! -f "$TEST_BIN" ] || [ ! -f "$PROFDATA" ]; then
+          if [ -z "$TEST_BUNDLE" ]; then
+            echo "::error::Could not find test bundle in $BIN_PATH."
+            exit 1
+          fi
+
+          if [ -d "$TEST_BUNDLE" ]; then
+            TEST_BIN="$TEST_BUNDLE/Contents/MacOS/$(basename "$TEST_BUNDLE" .xctest)"
+          else
+            TEST_BIN="$TEST_BUNDLE"
+          fi
+
+          LLVM_COV="$(dirname "$(which swift)")/llvm-cov"
+          if [ ! -x "$LLVM_COV" ]; then
+            LLVM_COV="llvm-cov"
+          fi
+
+          if [ ! -f "$TEST_BIN" ] || [ -z "$PROFDATA" ] || [ ! -f "$PROFDATA" ]; then
             echo "::error::Could not find test binary ($TEST_BIN) or profdata ($PROFDATA)."
             exit 1
           fi
 
-          if [[ "$LLVM_COV" == "xcrun llvm-cov" ]]; then
-            COVERAGE_REPORT=$(xcrun llvm-cov report -instr-profile="$PROFDATA" "$TEST_BIN" --ignore-filename-regex=".build|Tests|Package.swift")
-          else
-            COVERAGE_REPORT=$("$LLVM_COV" report -instr-profile="$PROFDATA" "$TEST_BIN" --ignore-filename-regex=".build|Tests|Package.swift")
-          fi
-
+          COVERAGE_REPORT=$($LLVM_COV report -instr-profile="$PROFDATA" "$TEST_BIN" --ignore-filename-regex=".build|Tests|Package.swift")
           TOTAL_LINE_COV=$(printf '%s\n' "$COVERAGE_REPORT" | awk '/^TOTAL/ {print $10}')
           TOTAL_LINE_COV="${TOTAL_LINE_COV%\%}"
           echo "Total line coverage: $TOTAL_LINE_COV%"
@@ -195,8 +245,12 @@ jobs:
           }
 
   latest:
-    name: latest
-    runs-on: ubuntu-22.04
+    name: latest-6.2 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14]
     steps:
       - uses: actions/checkout@v4
 
@@ -212,6 +266,7 @@ jobs:
         run: ls -1 Package*.swift
 
       - name: Install System Dependencies (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libxml2-dev
@@ -222,9 +277,25 @@ jobs:
           grep -q "\"name\"[[:space:]]*:[[:space:]]*\"SwiftSOAPXMLMacros\"" /tmp/latest-dump-package.json
           grep -q "\"name\"[[:space:]]*:[[:space:]]*\"SwiftSOAPXMLOwnership6\"" /tmp/latest-dump-package.json
 
+      - name: Install SwiftLint (macOS)
+        if: runner.os == 'macOS'
+        run: brew install swiftlint
+
+      - name: Run SwiftLint (macOS)
+        if: runner.os == 'macOS'
+        run: swiftlint lint --reporter github-actions-logging
+
+      - name: Run SwiftLint (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workdir" \
+            -w /workdir \
+            ghcr.io/realm/swiftlint:latest \
+            swiftlint lint --reporter github-actions-logging
+
       - name: Build
         run: swift build -c debug
 
       - name: Run Tests
-        run: |
-          swift test --jobs 1 --parallel --num-workers 1
+        run: swift test --jobs 1 --parallel --num-workers 1
