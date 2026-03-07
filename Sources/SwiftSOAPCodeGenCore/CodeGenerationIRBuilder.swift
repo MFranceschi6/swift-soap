@@ -171,7 +171,7 @@ public struct CodeGenerationIRBuilder {
 
         let bindingOperationsByName = Dictionary(uniqueKeysWithValues: binding.operations.map { ($0.name, $0) })
 
-        let operations = try portType.operations.map { operation in
+        let operations = try portType.operations.map { operation -> OperationIR in
             let bindingOperation = bindingOperationsByName[operation.name]
             return try buildOperationIR(
                 serviceName: serviceName,
