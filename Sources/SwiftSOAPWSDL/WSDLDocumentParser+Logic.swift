@@ -276,7 +276,7 @@ extension WSDLDocumentParser {
 
         let attributes = try complexTypeNode.children()
             .filter { $0.name == "attribute" }
-            .map { attributeNode in
+            .map { attributeNode -> WSDLDefinition.Attribute in
                 guard let attributeName = normalized(attributeNode.attribute(named: "name")) else {
                     throw WSDLParsingError.invalidSchema(
                         name: name,
