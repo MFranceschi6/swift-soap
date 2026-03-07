@@ -112,6 +112,57 @@ final class XMLEncoderTests: XCTestCase {
         XCTAssertEqual(tree.root.name.localName, "_9_root_name")
     }
 
+    func test_encodeTree_rootElementName_usesXMLRootNodeWhenConfigurationIsUnset() throws {
+        struct Payload: Encodable, XMLRootNode {
+            static let xmlRootElementName = "ServiceEnvelope"
+            let value: String
+        }
+
+        let encoder = XMLEncoder()
+        let tree = try encoder.encodeTree(Payload(value: "ok"))
+
+        XCTAssertEqual(tree.root.name.localName, "ServiceEnvelope")
+    }
+
+    func test_encodeTree_rootElementName_configurationOverridesXMLRootNode() throws {
+        struct Payload: Encodable, XMLRootNode {
+            static let xmlRootElementName = "ImplicitEnvelope"
+            let value: String
+        }
+
+        let encoder = XMLEncoder(configuration: .init(rootElementName: "ExplicitEnvelope"))
+        let tree = try encoder.encodeTree(Payload(value: "ok"))
+
+        XCTAssertEqual(tree.root.name.localName, "ExplicitEnvelope")
+    }
+
+    func test_encodeTree_rootElementName_fromXMLRootNode_isSanitizedForXMLSafety() throws {
+        struct Payload: Encodable, XMLRootNode {
+            static let xmlRootElementName = "9 Root Name"
+            let value: String
+        }
+
+        let encoder = XMLEncoder()
+        let tree = try encoder.encodeTree(Payload(value: "ok"))
+
+        XCTAssertEqual(tree.root.name.localName, "_9_Root_Name")
+    }
+
+    func test_encodeTree_rootElementName_withEmptyXMLRootNode_throwsDeterministicError() throws {
+        struct Payload: Encodable, XMLRootNode {
+            static let xmlRootElementName = "   "
+            let value: String
+        }
+
+        let encoder = XMLEncoder()
+        XCTAssertThrowsError(try encoder.encodeTree(Payload(value: "ok"))) { error in
+            guard case let XMLParsingError.parseFailed(message) = error else {
+                return XCTFail("Expected XMLParsingError.parseFailed.")
+            }
+            XCTAssertTrue((message ?? "").contains("XML6_7_ROOT_NAME_EMPTY"))
+        }
+    }
+
     func test_encodeTree_dateAndDataStrategies_applyConfiguredScalarFormatting() throws {
         struct Payload: Encodable {
             let createdAt: Date

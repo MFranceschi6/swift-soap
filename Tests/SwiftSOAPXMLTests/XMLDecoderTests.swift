@@ -27,6 +27,66 @@ final class XMLDecoderTests: XCTestCase {
         XCTAssertEqual(decoded, "ciao")
     }
 
+    func test_decode_rootElementName_usesXMLRootNodeWhenConfigurationIsUnset() throws {
+        struct Payload: Codable, Equatable, XMLRootNode {
+            static let xmlRootElementName = "ServiceEnvelope"
+            let message: String
+        }
+
+        let encoder = XMLEncoder(configuration: .init(rootElementName: "ServiceEnvelope"))
+        let data = try encoder.encode(Payload(message: "hello"))
+
+        let decoder = XMLDecoder()
+        let decoded = try decoder.decode(Payload.self, from: data)
+        XCTAssertEqual(decoded, Payload(message: "hello"))
+    }
+
+    func test_decode_rootElementName_configurationOverridesXMLRootNode() throws {
+        struct Payload: Codable, Equatable, XMLRootNode {
+            static let xmlRootElementName = "ImplicitEnvelope"
+            let message: String
+        }
+
+        let encoder = XMLEncoder(configuration: .init(rootElementName: "ExplicitEnvelope"))
+        let data = try encoder.encode(Payload(message: "hello"))
+
+        let decoder = XMLDecoder(configuration: .init(rootElementName: "ExplicitEnvelope"))
+        let decoded = try decoder.decode(Payload.self, from: data)
+        XCTAssertEqual(decoded, Payload(message: "hello"))
+    }
+
+    func test_decode_rootElementName_fromXMLRootNode_mismatchThrowsDeterministicError() throws {
+        struct Payload: Codable, XMLRootNode {
+            static let xmlRootElementName = "ExpectedEnvelope"
+            let message: String
+        }
+
+        let xml = "<DifferentEnvelope><message>hello</message></DifferentEnvelope>"
+        let decoder = XMLDecoder()
+        XCTAssertThrowsError(try decoder.decode(Payload.self, from: Data(xml.utf8))) { error in
+            guard case let XMLParsingError.parseFailed(message) = error else {
+                return XCTFail("Expected XMLParsingError.parseFailed.")
+            }
+            XCTAssertTrue((message ?? "").contains("XML6_5_ROOT_MISMATCH"))
+        }
+    }
+
+    func test_decode_rootElementName_withEmptyXMLRootNode_throwsDeterministicError() throws {
+        struct Payload: Codable, XMLRootNode {
+            static let xmlRootElementName = "   "
+            let message: String
+        }
+
+        let xml = "<Payload><message>hello</message></Payload>"
+        let decoder = XMLDecoder()
+        XCTAssertThrowsError(try decoder.decode(Payload.self, from: Data(xml.utf8))) { error in
+            guard case let XMLParsingError.parseFailed(message) = error else {
+                return XCTFail("Expected XMLParsingError.parseFailed.")
+            }
+            XCTAssertTrue((message ?? "").contains("XML6_7_ROOT_NAME_EMPTY"))
+        }
+    }
+
     func test_decode_dateStrategy_multiple_supportsMixedFormatsInSamePayload() throws {
         struct Payload: Decodable {
             let iso: Date

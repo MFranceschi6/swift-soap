@@ -58,6 +58,11 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - new `Package@swift-5.9.swift` with macro targets/products enabled and path-based plugin integration;
   - lane-aware fixture manifest/tools-version support in codegen/plugin/runtime integration tests;
   - plugin manifest contract now validates 5.6/5.9/6.0/6.1 manifests.
+- Added XML Step `6.7` root policy support in `SwiftSOAPXML`:
+  - new public `XMLRootNode` protocol for implicit root resolution;
+  - deterministic root precedence (`configuration.rootElementName` > `XMLRootNode.xmlRootElementName` > type-name fallback);
+  - deterministic invalid-root diagnostic (`XML6_7_ROOT_NAME_EMPTY`);
+  - dedicated encoder/decoder tests for precedence, mismatch, and invalid-root paths.
 
 ### Changed
 - Enabled Swift 6 language mode in the latest manifest lane:

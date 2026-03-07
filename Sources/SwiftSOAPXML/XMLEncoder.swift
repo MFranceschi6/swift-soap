@@ -91,7 +91,7 @@ public struct XMLEncoder: Sendable {
     #endif
 
     private func encodeTreeImpl<T: Encodable>(_ value: T) throws -> XMLTreeDocument {
-        let rootElementName = resolveRootElementName(for: T.self)
+        let rootElementName = try resolveRootElementName(for: T.self)
         let rootNode = _XMLTreeElementBox(name: XMLQualifiedName(localName: rootElementName))
         let options = _XMLEncoderOptions(configuration: configuration)
         let encoder = _XMLTreeEncoder(
@@ -104,31 +104,15 @@ public struct XMLEncoder: Sendable {
         return XMLTreeDocument(root: rootNode.makeElement())
     }
 
-    private func resolveRootElementName<T>(for type: T.Type) -> String {
-        if let explicitName = configuration.rootElementName?.trimmingCharacters(in: .whitespacesAndNewlines),
-           explicitName.isEmpty == false {
-            return Self.makeXMLSafeName(explicitName)
+    private func resolveRootElementName<T>(for type: T.Type) throws -> String {
+        if let explicitName = XMLRootNameResolver.explicitRootElementName(from: configuration.rootElementName) {
+            return explicitName
         }
 
-        let typeName = String(describing: type)
-        let shortName = typeName.split(separator: ".").last.map(String.init) ?? "Root"
-        return Self.makeXMLSafeName(shortName)
-    }
-
-    private static func makeXMLSafeName(_ value: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
-        var result = value.unicodeScalars.map { scalar in
-            allowed.contains(scalar) ? Character(scalar) : "_"
+        if let implicitName = try XMLRootNameResolver.implicitRootElementName(for: type) {
+            return implicitName
         }
 
-        if result.isEmpty {
-            result = Array("Root")
-        }
-
-        if let first = result.first, first.isNumber {
-            result.insert("_", at: result.startIndex)
-        }
-
-        return String(result)
+        return XMLRootNameResolver.fallbackRootElementName(for: type)
     }
 }
