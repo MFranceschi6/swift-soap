@@ -46,6 +46,13 @@ Le librerie appartenenti allo [Swift Server Workgroup (SSWG)](https://www.swift.
   - test e implementazioni non devono assumere filesystem/path specifici di macOS,
   - evitare dipendenze da networking reale nei test (usare fakes/mocks).
 
+### Regole sintassi multi-versione Swift
+- Quando una sintassi o feature di linguaggio non è disponibile in tutte le lane supportate, usare gating esplicito con `#if swift(>=x.y)` e fornire un fallback equivalente per le versioni precedenti.
+- Evitare scorciatoie sintattiche non supportate dalle lane legacy (es. shorthand introdotte dopo Swift 5.6) se non protette da conditional compilation.
+- Le differenze sintattiche tra lane non devono cambiare il comportamento osservabile delle API pubbliche; eventuali eccezioni devono essere documentate nel report tecnico.
+- Dove possibile, applicare sempre le varianti sintattiche specifiche per versione Swift nelle rispettive lane (non solo come fallback minimo), in modo da mantenere API moderne e leggibili sulle lane più recenti.
+- Priorità obbligatoria: quando una differenza sintattica impatta una API pubblica (firma, contratto di errore, semantica visibile), implementare esplicitamente entrambe le varianti cross-versione e verificarne la coerenza comportamentale.
+
 ## 5) Tooling: SwiftFormat (e SwiftLint opzionale)
 - Usare **SwiftFormat** come fonte unica di formattazione.
 - Non introdurre “stile manuale” in conflitto con SwiftFormat.

@@ -26,6 +26,10 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - `SwiftSOAPServerAsyncTests`,
   - `SwiftSOAPClientNIOTests`,
   - `SwiftSOAPServerNIOTests`.
+- Added initial `SwiftSOAPWSDL` foundation for Epic 6:
+  - new `SwiftSOAPWSDL` library target in modern manifests (`Package@swift-5.6.swift`, `Package@swift-6.0.swift`);
+  - baseline in-memory WSDL model (`WSDLDefinition`) for messages, port types, bindings, and services;
+  - bootstrap `WSDLDocumentParser` and dedicated `SwiftSOAPWSDLTests` target with initial parser coverage.
 
 ### Changed
 - Enabled Swift 6 language mode in the latest manifest lane:
@@ -45,6 +49,13 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - Hardened XML ownership internals in preparation for deeper Swift 6 ownership work:
   - centralized `xmlChar*` lifetime management in `LibXML2.withOwnedXMLCharPointer(...)`;
   - strengthened `XMLDocument` storage invariants by making the owned `xmlDocPtr` non-optional.
+- Added a Swift 6-only internal ownership layer for XML pointers:
+  - new internal target `SwiftSOAPXMLOwnership6` (latest lane only);
+  - first adoption of ownership syntax (`~Copyable`, `borrowing`, `consuming`) for `xmlChar*` wrappers, without changing public APIs.
+  - expanded ownership wrappers to XPath context/object lifetimes, removing ad-hoc `defer` cleanup in Swift 6 XML XPath paths.
+- Documented Epic 5 closure artifacts and scope boundaries:
+  - added dedicated roadmap context and technical report for Swift 6 ownership prep;
+  - classified non-latest local lane failures as environment/toolchain issues for separate infra follow-up (`ci-local-matrix` hardening).
 - Backported source compatibility for Swift 5.6 parsing/type-checking in XML/core tests:
   - replaced shorthand optional-binding syntax with Swift 5.6-compatible forms where needed;
   - added explicit closure return types in libxml namespace helper paths.
@@ -88,6 +99,10 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - Updated `Package.swift` to expose the new `SwiftSOAPCore` library product and its dedicated test target.
 - Reorganized implementation-bearing extensions into dedicated files (for example `+Logic`, `+Codable`) to align with repository conventions.
 - Updated `SOAPEnvelope` declaration to enforce inline type declaration style, with a scoped SwiftLint `line_length` exception on the declaration line.
+- Updated `agent.md` compatibility guidance with explicit multi-version syntax rules:
+  - require `#if swift(>=...)` gating when language syntax/features differ across supported lanes;
+  - require equivalent fallback implementation for older lanes to preserve public behavior.
+  - require proactive adoption of version-specific syntax where possible, with mandatory cross-version parity when public APIs are impacted.
 
 ## [2026-03-04]
 
