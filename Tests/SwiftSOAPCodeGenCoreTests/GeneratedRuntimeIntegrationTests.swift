@@ -71,6 +71,7 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
         let escapedRepositoryRoot = repositoryRoot
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
+        let packageIdentity = FixtureSwiftToolchainSupport.packageIdentity(forRepositoryRoot: repositoryRoot)
 
         let packageManifest = """
         // swift-tools-version: \(toolchain.fixtureToolsVersion)
@@ -89,11 +90,11 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
                 .target(
                     name: "GeneratedRuntime",
                     dependencies: [
-                        .product(name: "SwiftSOAPCore", package: "swift-soap"),
-                        .product(name: "SwiftSOAPClientAsync", package: "swift-soap"),
-                        .product(name: "SwiftSOAPServerAsync", package: "swift-soap"),
-                        .product(name: "SwiftSOAPClientNIO", package: "swift-soap"),
-                        .product(name: "SwiftSOAPServerNIO", package: "swift-soap"),
+                        .product(name: "SwiftSOAPCore", package: "\(packageIdentity)"),
+                        .product(name: "SwiftSOAPClientAsync", package: "\(packageIdentity)"),
+                        .product(name: "SwiftSOAPServerAsync", package: "\(packageIdentity)"),
+                        .product(name: "SwiftSOAPClientNIO", package: "\(packageIdentity)"),
+                        .product(name: "SwiftSOAPServerNIO", package: "\(packageIdentity)"),
                         .product(name: "NIOCore", package: "swift-nio")
                     ]
                 ),
