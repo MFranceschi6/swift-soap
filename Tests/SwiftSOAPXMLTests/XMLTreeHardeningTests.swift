@@ -202,7 +202,7 @@ final class XMLTreeHardeningTests: XCTestCase {
             return XCTFail("Expected XMLParsingError.parseFailed, got: \(error)", file: file, line: line)
         }
 
-        guard let message else {
+        guard let message = message else {
             return XCTFail("Expected error message containing code \(code), got nil.", file: file, line: line)
         }
 
