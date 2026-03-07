@@ -1,4 +1,4 @@
-// swift-tools-version: 5.6
+// swift-tools-version: 6.1
 
 import PackageDescription
 
@@ -19,7 +19,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
-        .package(url: "https://github.com/apple/swift-nio.git", from: "2.0.0")
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.0.0"),
+        .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0")
     ],
     targets: [
         .systemLibrary(
@@ -38,6 +39,13 @@ let package = Package(
             name: "SwiftSOAPXMLCShim",
             dependencies: ["CLibXML2"],
             publicHeadersPath: "include"
+        ),
+        .target(
+            name: "SwiftSOAPXMLOwnership6",
+            dependencies: [
+                "SwiftSOAPCompatibility",
+                "SwiftSOAPXMLCShim"
+            ]
         ),
         .target(
             name: "SwiftSOAPCore",
@@ -61,7 +69,8 @@ let package = Package(
                 "SwiftSOAPCompatibility",
                 "SwiftSOAPCore",
                 "SwiftSOAPWSDL",
-                .product(name: "Logging", package: "swift-log")
+                .product(name: "Logging", package: "swift-log"),
+                .product(name: "SwiftSyntaxBuilder", package: "swift-syntax")
             ]
         ),
         .executableTarget(
@@ -95,6 +104,7 @@ let package = Package(
             dependencies: [
                 "SwiftSOAPCompatibility",
                 "SwiftSOAPXMLCShim",
+                "SwiftSOAPXMLOwnership6",
                 .product(name: "Logging", package: "swift-log")
             ]
         ),
@@ -143,7 +153,11 @@ let package = Package(
         .plugin(
             name: "SwiftSOAPCodeGenPlugin",
             capability: .buildTool(),
-            dependencies: ["SwiftSOAPCodeGen"]
+            dependencies: ["SwiftSOAPCodeGen"],
+            path: "Plugins/SwiftSOAPCodeGenPlugin61"
         ),
+    ],
+    swiftLanguageModes: [
+        .v6
     ]
 )

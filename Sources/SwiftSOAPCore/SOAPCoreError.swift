@@ -5,5 +5,6 @@ public enum SOAPCoreError: Error {
     case invalidBodyConfiguration(message: String?)
     case invalidPayload(message: String?)
     case invalidFault(message: String?)
+    case unsupportedBinding(message: String?)
     case other(underlyingError: SOAPAnyError?, message: String?)
 }

@@ -36,23 +36,65 @@ public struct XMLNode {
         return String(cString: UnsafePointer<CChar>(OpaquePointer(hrefPointer)))
     }
 
-    public func text() -> String? {
-        guard let contentPointer = xmlNodeGetContent(nodePointer) else {
+    public func parent() -> XMLNode? {
+        guard let parentPointer = nodePointer.pointee.parent else {
             return nil
         }
-        defer { swiftsoap_xml_free_xml_char(contentPointer) }
-        return String(cString: UnsafePointer<CChar>(OpaquePointer(contentPointer)))
+        guard parentPointer.pointee.type == XML_ELEMENT_NODE else {
+            return nil
+        }
+        return XMLNode(nodePointer: parentPointer)
+    }
+
+    public func namespaceDeclarations() -> [String: String] {
+        var declarations: [String: String] = [:]
+        var namespacePointer = nodePointer.pointee.nsDef
+
+        while let currentNamespacePointer = namespacePointer {
+            let prefix: String
+            if let prefixPointer = currentNamespacePointer.pointee.prefix {
+                prefix = String(cString: UnsafePointer<CChar>(OpaquePointer(prefixPointer)))
+            } else {
+                prefix = ""
+            }
+
+            if let hrefPointer = currentNamespacePointer.pointee.href {
+                declarations[prefix] = String(cString: UnsafePointer<CChar>(OpaquePointer(hrefPointer)))
+            }
+
+            namespacePointer = currentNamespacePointer.pointee.next
+        }
+
+        return declarations
+    }
+
+    public func namespaceDeclarationsInScope() -> [String: String] {
+        var scopeDeclarations: [String: String] = [:]
+        var currentNode: XMLNode? = self
+
+        while let node = currentNode {
+            for (prefix, uri) in node.namespaceDeclarations() where scopeDeclarations[prefix] == nil {
+                scopeDeclarations[prefix] = uri
+            }
+            currentNode = node.parent()
+        }
+
+        return scopeDeclarations
+    }
+
+    public func text() -> String? {
+        return LibXML2.withOwnedXMLCharPointer(xmlNodeGetContent(nodePointer)) { contentPointer in
+            String(cString: UnsafePointer<CChar>(OpaquePointer(contentPointer)))
+        }
     }
 
     public func attribute(named attributeName: String) -> String? {
         LibXML2.ensureInitialized()
 
         return LibXML2.withXMLCharPointer(attributeName) { attributeNamePointer in
-            guard let valuePointer = xmlGetProp(nodePointer, attributeNamePointer) else {
-                return nil
+            LibXML2.withOwnedXMLCharPointer(xmlGetProp(nodePointer, attributeNamePointer)) { valuePointer in
+                String(cString: UnsafePointer<CChar>(OpaquePointer(valuePointer)))
             }
-            defer { swiftsoap_xml_free_xml_char(valuePointer) }
-            return String(cString: UnsafePointer<CChar>(OpaquePointer(valuePointer)))
         }
     }
 

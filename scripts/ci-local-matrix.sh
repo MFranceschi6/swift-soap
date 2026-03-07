@@ -1,5 +1,6 @@
 #!/bin/zsh
 set -euo pipefail
+setopt typesetsilent
 
 ROOT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 REPORT_ROOT="$ROOT_DIR/.cursor/report/local-matrix"
@@ -9,13 +10,28 @@ RUN_DIR="$REPORT_ROOT/$RUN_DATE/$RUN_ID"
 mkdir -p "$RUN_DIR"
 ln -sfn "$RUN_DIR" "$REPORT_ROOT/latest"
 
+SWIFTLY_BIN="${SWIFTLY_BIN:-$HOME/.swiftly/bin/swiftly}"
+SWIFTLY_CONFIG="${SWIFTLY_CONFIG:-$HOME/.swiftly/config.json}"
+
+LANES=(
+  runtime-5.4
+  tooling-5.6-plus
+  quality-5.10
+  latest
+)
+
 usage() {
-  cat <<'EOF'
+  cat <<'USAGE'
 Usage:
   ./scripts/ci-local-matrix.sh
   ./scripts/ci-local-matrix.sh --lane <runtime-5.4|tooling-5.6-plus|quality-5.10|latest>
   ./scripts/ci-local-matrix.sh <runtime-5.4|tooling-5.6-plus|quality-5.10|latest>
-EOF
+  ./scripts/ci-local-matrix.sh --list-toolchains
+
+Environment:
+  SWIFTLY_BIN     Path to swiftly binary (default: ~/.swiftly/bin/swiftly)
+  SWIFTLY_CONFIG  Path to swiftly config.json (default: ~/.swiftly/config.json)
+USAGE
 }
 
 is_valid_lane() {
@@ -25,18 +41,221 @@ is_valid_lane() {
   esac
 }
 
-SELECTED_LANE="${1:-}"
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-  usage
-  exit 0
+version_ge() {
+  local left="$1"
+  local right="$2"
+  local IFS=.
+  local -a left_parts right_parts
+  left_parts=(${=left})
+  right_parts=(${=right})
+
+  local i
+  for i in 1 2 3; do
+    local l=${left_parts[$i]:-0}
+    local r=${right_parts[$i]:-0}
+    if (( l > r )); then
+      return 0
+    fi
+    if (( l < r )); then
+      return 1
+    fi
+  done
+
+  return 0
+}
+
+version_lt() {
+  ! version_ge "$1" "$2"
+}
+
+lane_accepts_version() {
+  local lane="$1"
+  local version="$2"
+
+  case "$lane" in
+    runtime-5.4)
+      [[ "$version" == 5.4 || "$version" == 5.4.* ]]
+      ;;
+    tooling-5.6-plus)
+      [[ "$version" == 5.6* || "$version" == 5.7* || "$version" == 5.8* || "$version" == 5.9* ]]
+      ;;
+    quality-5.10)
+      [[ "$version" == 5.10* ]]
+      ;;
+    latest)
+      local major="${version%%.*}"
+      (( major >= 6 ))
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+load_swiftly_versions() {
+  if [[ ! -x "$SWIFTLY_BIN" ]]; then
+    echo "swiftly not found or not executable at: $SWIFTLY_BIN" >&2
+    return 1
+  fi
+
+  if [[ ! -f "$SWIFTLY_CONFIG" ]]; then
+    echo "swiftly config not found at: $SWIFTLY_CONFIG" >&2
+    return 1
+  fi
+
+  typeset -ga SWIFTLY_VERSIONS
+  SWIFTLY_VERSIONS=()
+
+  SWIFTLY_IN_USE=$(sed -nE 's/^[[:space:]]*"inUse"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$SWIFTLY_CONFIG" | head -n 1)
+
+  local version
+  while read -r version; do
+    [[ -n "$version" ]] || continue
+    SWIFTLY_VERSIONS+=("$version")
+  done < <(
+    sed -n '/"installedToolchains"[[:space:]]*:/,/\]/p' "$SWIFTLY_CONFIG" \
+      | sed -nE 's/.*"([0-9]+\.[0-9]+(\.[0-9]+)?)".*/\1/p'
+  )
+
+  if (( ${#SWIFTLY_VERSIONS[@]} == 0 )); then
+    echo "no installed swiftly toolchains found in: $SWIFTLY_CONFIG" >&2
+    return 1
+  fi
+
+  return 0
+}
+
+select_lane_version() {
+  local lane="$1"
+  local best=""
+  local candidate
+
+  for candidate in "${SWIFTLY_VERSIONS[@]}"; do
+    if ! lane_accepts_version "$lane" "$candidate"; then
+      continue
+    fi
+
+    if [[ -z "$best" ]] || version_lt "$best" "$candidate"; then
+      best="$candidate"
+    fi
+  done
+
+  if [[ -z "$best" ]]; then
+    return 1
+  fi
+
+  SELECTED_VERSION="$best"
+  return 0
+}
+
+list_toolchains() {
+  load_swiftly_versions
+
+  echo "swiftly toolchains:"
+  local version
+  for version in "${SWIFTLY_VERSIONS[@]}"; do
+    if [[ -n "${SWIFTLY_IN_USE:-}" && "$version" == "$SWIFTLY_IN_USE" ]]; then
+      echo "  - $version (in use)"
+    else
+      echo "  - $version"
+    fi
+  done
+}
+
+run_swift() {
+  "$SWIFTLY_BIN" run swift "$@"
+}
+
+run_lane() {
+  local lane="$1"
+
+  if ! select_lane_version "$lane"; then
+    echo "[lane:$lane] no installed swiftly toolchain matches this lane"
+    return 2
+  fi
+
+  local version="$SELECTED_VERSION"
+  local build_dir="$ROOT_DIR/.build/local-matrix/$lane/$version"
+  local log_file="$RUN_DIR/$lane.log"
+
+  mkdir -p "$build_dir"
+  : > "$log_file"
+
+  {
+    echo "[lane:$lane] swiftly_version=$version"
+    echo "[lane:$lane] build_dir=$build_dir"
+  } | tee -a "$log_file"
+
+  set +e
+  (
+    set -euo pipefail
+    cd "$ROOT_DIR"
+
+    "$SWIFTLY_BIN" use "$version" --global-default -y
+    run_swift --version
+
+    case "$lane" in
+      runtime-5.4)
+        run_swift package --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" describe > "$RUN_DIR/runtime-5.4-package-describe.txt"
+        ;;
+      tooling-5.6-plus)
+        run_swift build --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" -c debug --jobs 1
+        run_swift test --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" --jobs 1 --parallel --num-workers 1
+        ;;
+      quality-5.10)
+        if ! command -v swiftlint >/dev/null 2>&1; then
+          echo "swiftlint not found in PATH"
+          exit 127
+        fi
+        swiftlint lint
+        run_swift build --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" -c debug --jobs 1
+        run_swift test --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" --enable-code-coverage --jobs 1 --parallel --num-workers 1
+        ;;
+      latest)
+        run_swift build --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" -c debug --jobs 1
+        run_swift test --disable-sandbox --package-path "$ROOT_DIR" --build-path "$build_dir" --jobs 1 --parallel --num-workers 1
+        ;;
+    esac
+  ) > >(tee -a "$log_file") 2> >(tee -a "$log_file" >&2)
+  local lane_rc=$?
+  set -e
+
+  if [[ $lane_rc -ne 0 ]]; then
+    echo "[lane:$lane] failed (exit=$lane_rc)" | tee -a "$log_file"
+    return $lane_rc
+  fi
+
+  echo "[lane:$lane] completed" | tee -a "$log_file"
+}
+
+SELECTED_LANE=""
+LIST_TOOLCHAINS="false"
+
+if [[ $# -gt 0 ]]; then
+  case "$1" in
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --list-toolchains)
+      LIST_TOOLCHAINS="true"
+      ;;
+    --lane)
+      if [[ -z "${2:-}" ]]; then
+        usage
+        exit 1
+      fi
+      SELECTED_LANE="$2"
+      ;;
+    *)
+      SELECTED_LANE="$1"
+      ;;
+  esac
 fi
 
-if [[ "${1:-}" == "--lane" ]]; then
-  if [[ -z "${2:-}" ]]; then
-    usage
-    exit 1
-  fi
-  SELECTED_LANE="$2"
+if [[ "$LIST_TOOLCHAINS" == "true" ]]; then
+  list_toolchains
+  exit 0
 fi
 
 if [[ -n "$SELECTED_LANE" ]] && ! is_valid_lane "$SELECTED_LANE"; then
@@ -44,110 +263,31 @@ if [[ -n "$SELECTED_LANE" ]] && ! is_valid_lane "$SELECTED_LANE"; then
   exit 1
 fi
 
-run_lane() { # lane image lane_command platform timeout_seconds max_retries
-  local lane="$1"
-  local image="$2"
-  local lane_command="$3"
-  local platform="${4:-}"
-  local timeout_seconds="${5:-300}"
-  local max_retries="${6:-0}"
+load_swiftly_versions
 
-  if [[ -n "$SELECTED_LANE" && "$SELECTED_LANE" != "$lane" ]]; then
-    return 0
-  fi
-
-  local log_file="$RUN_DIR/${lane}.log"
-  : > "$log_file"
-  echo "[lane:$lane] image=$image platform=${platform:-default} timeout=${timeout_seconds}s retries=$max_retries run_id=$RUN_ID" | tee -a "$log_file"
-
-  local platform_args=()
-  if [[ -n "$platform" ]]; then
-    platform_args=(--platform "$platform")
-  fi
-
-  local attempt=1
-  local max_attempts=$((max_retries + 1))
-  while (( attempt <= max_attempts )); do
-    local scratch_path="/tmp/swiftpm-${lane}-${RUN_ID}-a${attempt}"
-    echo "[lane:$lane] attempt=$attempt/$max_attempts scratch_path=$scratch_path" | tee -a "$log_file"
-
-    set +e
-    docker run --rm \
-      "${platform_args[@]}" \
-      -v "$ROOT_DIR:/workspace" \
-      -w /workspace \
-      "$image" \
-      bash -lc "set -euo pipefail; \
-        apt-get update >/dev/null; \
-        apt-get install -y libxml2-dev >/dev/null; \
-        rm -rf /tmp/swift-lane-workspace; \
-        mkdir -p /tmp/swift-lane-workspace; \
-        cp -a /workspace/Package*.swift /tmp/swift-lane-workspace/; \
-        cp -a /workspace/Sources /tmp/swift-lane-workspace/; \
-        cp -a /workspace/Tests /tmp/swift-lane-workspace/; \
-        cd /tmp/swift-lane-workspace; \
-        export SWIFTPM_SCRATCH_PATH='$scratch_path'; \
-        swift --version; \
-        timeout ${timeout_seconds}s bash -lc \"$lane_command\"" >> "$log_file" 2>&1
-    local exit_code=$?
-    set -e
-
-    if [[ $exit_code -eq 0 ]]; then
-      echo "[lane:$lane] completed (attempt=$attempt/$max_attempts)" | tee -a "$log_file"
-      return 0
-    fi
-
-    if [[ $exit_code -eq 124 ]]; then
-      echo "[lane:$lane] timeout after ${timeout_seconds}s (attempt=$attempt/$max_attempts)" | tee -a "$log_file"
-    else
-      echo "[lane:$lane] failed with exit code $exit_code (attempt=$attempt/$max_attempts)" | tee -a "$log_file"
-    fi
-
-    if (( attempt == max_attempts )); then
-      return $exit_code
-    fi
-
-    echo "[lane:$lane] retrying..." | tee -a "$log_file"
-    attempt=$((attempt + 1))
-  done
-}
-
-run_lane \
-  "runtime-5.4" \
-  "swift:5.4" \
-  "swift package describe > /tmp/runtime-5.4-package-describe.txt" \
-  "linux/amd64" \
-  "120" \
-  "0"
-
-run_lane \
-  "tooling-5.6-plus" \
-  "swift:5.6" \
-  "swift build -c debug --jobs 1 && swift test --jobs 1 --parallel --num-workers 1" \
-  "linux/amd64" \
-  "300" \
-  "0"
-
-run_lane \
-  "quality-5.10" \
-  "swift:5.10" \
-  "swift test --scratch-path \"\$SWIFTPM_SCRATCH_PATH\" --enable-code-coverage --jobs 1 --parallel --num-workers 1" \
-  "" \
-  "300" \
-  "0"
-
-run_lane \
-  "latest" \
-  "swift:6.2" \
-  "swift test --scratch-path \"\$SWIFTPM_SCRATCH_PATH\" --enable-code-coverage --jobs 1 --parallel --num-workers 1" \
-  "" \
-  "300" \
-  "1"
-
+typeset -a lanes_to_run
 if [[ -n "$SELECTED_LANE" ]]; then
-  printf 'Local lane completed: %s\n' "$SELECTED_LANE"
+  lanes_to_run=("$SELECTED_LANE")
 else
-  printf 'Local matrix completed: runtime-5.4, tooling-5.6-plus, quality-5.10, latest\n'
+  lanes_to_run=("${LANES[@]}")
 fi
 
-printf 'Logs: %s\n' "$RUN_DIR"
+typeset -A lane_results
+overall_rc=0
+
+for lane in "${lanes_to_run[@]}"; do
+  if run_lane "$lane"; then
+    lane_results[$lane]="ok"
+  else
+    lane_results[$lane]="failed"
+    overall_rc=1
+  fi
+done
+
+echo "Summary:"
+for lane in "${lanes_to_run[@]}"; do
+  echo "  - $lane: ${lane_results[$lane]}"
+done
+
+echo "Logs: $RUN_DIR"
+exit $overall_rc
