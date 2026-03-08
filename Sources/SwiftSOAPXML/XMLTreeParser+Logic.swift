@@ -1,4 +1,5 @@
 import Foundation
+import SwiftSOAPCompatibility
 import SwiftSOAPXMLCShim
 
 extension XMLTreeParser {
