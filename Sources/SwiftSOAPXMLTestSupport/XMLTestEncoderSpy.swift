@@ -31,10 +31,10 @@ public final class XMLTestEncoderSpy {
     public func encodeTree<T: Encodable>(_ value: T) throws -> XMLTreeDocument {
         recordCall(method: .encodeTree, valueType: T.self)
 
-        if let forcedError {
+        if let forcedError = forcedError {
             throw forcedError
         }
-        if let stubbedTreeDocument {
+        if let stubbedTreeDocument = stubbedTreeDocument {
             return stubbedTreeDocument
         }
 
@@ -44,10 +44,10 @@ public final class XMLTestEncoderSpy {
     public func encode<T: Encodable>(_ value: T) throws -> Data {
         recordCall(method: .encodeData, valueType: T.self)
 
-        if let forcedError {
+        if let forcedError = forcedError {
             throw forcedError
         }
-        if let stubbedData {
+        if let stubbedData = stubbedData {
             return stubbedData
         }
 
