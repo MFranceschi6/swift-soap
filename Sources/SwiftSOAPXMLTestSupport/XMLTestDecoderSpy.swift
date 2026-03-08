@@ -33,10 +33,10 @@ public final class XMLTestDecoderSpy {
     public func decodeTree<T: Decodable>(_ type: T.Type, from tree: XMLTreeDocument) throws -> T {
         recordCall(method: .decodeTree, valueType: type, payloadSize: tree.root.children.count)
 
-        if let forcedError {
+        if let forcedError = forcedError {
             throw forcedError
         }
-        if let decodeTreeStub {
+        if let decodeTreeStub = decodeTreeStub {
             return try resolveStubbedValue(
                 expectedType: type,
                 stubbedValue: decodeTreeStub(type, tree)
@@ -49,10 +49,10 @@ public final class XMLTestDecoderSpy {
     public func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
         recordCall(method: .decodeData, valueType: type, payloadSize: data.count)
 
-        if let forcedError {
+        if let forcedError = forcedError {
             throw forcedError
         }
-        if let decodeDataStub {
+        if let decodeDataStub = decodeDataStub {
             return try resolveStubbedValue(
                 expectedType: type,
                 stubbedValue: decodeDataStub(type, data)

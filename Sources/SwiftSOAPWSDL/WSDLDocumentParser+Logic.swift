@@ -332,7 +332,7 @@ extension WSDLDocumentParser {
             .flatMap(normalized)
 
         let facets: WSDLDefinition.Facets?
-        if let restrictionNode {
+        if let restrictionNode = restrictionNode {
             let minLength = restrictionNode.children()
                 .first(where: { $0.name == "minLength" })?
                 .attribute(named: "value").flatMap { Int($0) }
