@@ -18,7 +18,7 @@ let package = Package(
         .library(name: "SwiftSOAPServerNIO", targets: ["SwiftSOAPServerNIO"]),
         .library(name: "SwiftSOAPXMLMacros", targets: ["SwiftSOAPXMLMacros"]),
         .plugin(name: "SwiftSOAPCodeGenPlugin", targets: ["SwiftSOAPCodeGenPlugin"])
-    ]
+    ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.0.0"),

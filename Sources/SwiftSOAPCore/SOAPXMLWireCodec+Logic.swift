@@ -6,15 +6,57 @@ extension SOAPXMLWireCodec {
         operation: Operation.Type,
         request: Operation.RequestPayload
     ) throws -> Data {
-        try encodeEnvelopeData(operation: operation, response: nil, request: request)
+        try encodeRequestMessage(operation: operation, request: request).envelopeXMLData
     }
 
     public func decodeRequestEnvelope<Operation: SOAPOperationContract>(
         operation: Operation.Type,
         from data: Data
     ) throws -> Operation.RequestPayload {
-        let envelope = try parseEnvelope(data: data)
+        try decodeRequestMessage(
+            operation: operation,
+            from: SOAPTransportMessage(envelopeXMLData: data)
+        )
+    }
+
+    public func decodeResponseEnvelope<Operation: SOAPOperationContract>(
+        operation: Operation.Type,
+        from data: Data
+    ) throws -> SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload> {
+        try decodeResponseMessage(
+            operation: operation,
+            from: SOAPTransportMessage(envelopeXMLData: data)
+        )
+    }
+
+    public func encodeResponseEnvelope<Operation: SOAPOperationContract>(
+        operation: Operation.Type,
+        response: SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload>
+    ) throws -> Data {
+        try encodeResponseMessage(operation: operation, response: response).envelopeXMLData
+    }
+
+    public func encodeRequestMessage<Operation: SOAPOperationContract>(
+        operation: Operation.Type,
+        request: Operation.RequestPayload,
+        attachmentManifest: SOAPAttachmentManifest = .empty
+    ) throws -> SOAPTransportMessage {
+        let envelopeData = try encodeEnvelopeData(operation: operation, response: nil, request: request)
+        let envelope = try parseEnvelope(data: envelopeData)
+        try validateAttachmentReferences(in: envelope, manifest: attachmentManifest)
+        return SOAPTransportMessage(
+            envelopeXMLData: envelopeData,
+            attachmentManifest: attachmentManifest
+        )
+    }
+
+    public func decodeRequestMessage<Operation: SOAPOperationContract>(
+        operation: Operation.Type,
+        from message: SOAPTransportMessage
+    ) throws -> Operation.RequestPayload {
+        let envelope = try parseEnvelope(data: message.envelopeXMLData)
         try validateEnvelopeNamespace(for: envelope, metadata: bindingMetadata(for: operation))
+        try validateAttachmentReferences(in: envelope, manifest: message.attachmentManifest)
         let bodyElement = try resolveBodyElement(in: envelope)
         let payloadElement = try resolvePayloadElement(in: bodyElement)
         let payloadTree = XMLTreeDocument(root: payloadElement)
@@ -31,15 +73,16 @@ extension SOAPXMLWireCodec {
         }
     }
 
-    public func decodeResponseEnvelope<Operation: SOAPOperationContract>(
+    public func decodeResponseMessage<Operation: SOAPOperationContract>(
         operation: Operation.Type,
-        from data: Data
+        from message: SOAPTransportMessage
     ) throws -> SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload> {
         let metadata = bindingMetadata(for: operation)
         try validateBinding(metadata: metadata)
 
-        let envelope = try parseEnvelope(data: data)
+        let envelope = try parseEnvelope(data: message.envelopeXMLData)
         try validateEnvelopeNamespace(for: envelope, metadata: metadata)
+        try validateAttachmentReferences(in: envelope, manifest: message.attachmentManifest)
 
         let bodyElement = try resolveBodyElement(in: envelope)
         let payloadElement = try resolvePayloadElement(in: bodyElement)
@@ -68,15 +111,26 @@ extension SOAPXMLWireCodec {
         }
     }
 
-    public func encodeResponseEnvelope<Operation: SOAPOperationContract>(
+    public func encodeResponseMessage<Operation: SOAPOperationContract>(
         operation: Operation.Type,
-        response: SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload>
-    ) throws -> Data {
-        try encodeEnvelopeData(operation: operation, response: response, request: nil)
+        response: SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload>,
+        attachmentManifest: SOAPAttachmentManifest = .empty
+    ) throws -> SOAPTransportMessage {
+        let envelopeData = try encodeEnvelopeData(operation: operation, response: response, request: nil)
+        let envelope = try parseEnvelope(data: envelopeData)
+        try validateAttachmentReferences(in: envelope, manifest: attachmentManifest)
+        return SOAPTransportMessage(
+            envelopeXMLData: envelopeData,
+            attachmentManifest: attachmentManifest
+        )
     }
 }
 
 private extension SOAPXMLWireCodec {
+    var xopIncludeNamespaceURI: String {
+        "http://www.w3.org/2004/08/xop/include"
+    }
+
     func encodeEnvelopeData<Operation: SOAPOperationContract>(
         operation: Operation.Type,
         response: SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload>?,
@@ -419,5 +473,62 @@ private extension SOAPXMLWireCodec {
             return soapError
         }
         return SOAPCoreError.other(underlyingError: error, message: message)
+    }
+
+    func validateAttachmentReferences(
+        in envelope: XMLTreeDocument,
+        manifest: SOAPAttachmentManifest
+    ) throws {
+        var referencedContentIDs: [String] = []
+        try collectAttachmentReferenceContentIDs(
+            in: envelope.root,
+            contentIDs: &referencedContentIDs
+        )
+
+        for contentID in referencedContentIDs where !manifest.containsAttachment(forContentID: contentID) {
+            throw SOAPCoreError.missingAttachmentReference(
+                contentID: contentID,
+                message: "[XML6_10B_ATTACHMENT_MISSING] Missing attachment for cid reference '\(contentID)'."
+            )
+        }
+    }
+
+    func collectAttachmentReferenceContentIDs(
+        in element: XMLTreeElement,
+        contentIDs: inout [String]
+    ) throws {
+        if element.name.localName == "Include", element.name.namespaceURI == xopIncludeNamespaceURI {
+            contentIDs.append(try attachmentReferenceContentID(from: element))
+        }
+
+        for child in element.children {
+            if case .element(let childElement) = child {
+                try collectAttachmentReferenceContentIDs(in: childElement, contentIDs: &contentIDs)
+            }
+        }
+    }
+
+    func attachmentReferenceContentID(from includeElement: XMLTreeElement) throws -> String {
+        guard let hrefValue = includeElement.attributes.first(where: { $0.name.localName == "href" })?.value else {
+            throw SOAPCoreError.invalidAttachmentReference(
+                message: "[XML6_10B_ATTACHMENT_HREF_MISSING] xop:Include is missing required 'href' attribute."
+            )
+        }
+
+        let trimmedHref = hrefValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedHref.hasPrefix("cid:") else {
+            throw SOAPCoreError.invalidAttachmentReference(
+                message: "[XML6_10B_ATTACHMENT_HREF_INVALID] xop:Include href must start with 'cid:'. Found '\(trimmedHref)'."
+            )
+        }
+
+        let contentID = SOAPAttachmentManifest.normalizeContentID(trimmedHref)
+        guard !contentID.isEmpty else {
+            throw SOAPCoreError.invalidAttachmentReference(
+                message: "[XML6_10B_ATTACHMENT_CID_EMPTY] xop:Include href contains an empty cid value."
+            )
+        }
+
+        return contentID
     }
 }

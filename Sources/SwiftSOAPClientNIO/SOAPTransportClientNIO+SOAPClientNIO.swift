@@ -15,13 +15,24 @@ extension SOAPTransportClientNIO: SOAPClientNIO {
 
         Task {
             do {
-                let requestXMLData = try wireCodec.encodeRequestEnvelope(operation: operation, request: request)
-                let responseXMLData = try await transport.send(
-                    requestXMLData,
-                    to: endpointURL,
-                    soapAction: operation.soapAction?.rawValue
-                )
-                let response = try wireCodec.decodeResponseEnvelope(operation: operation, from: responseXMLData)
+                let requestMessage = try wireCodec.encodeRequestMessage(operation: operation, request: request)
+                let response: SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload>
+
+                if let attachmentTransport = transport as? any SOAPClientAttachmentTransport {
+                    let responseMessage = try await attachmentTransport.send(
+                        requestMessage,
+                        to: endpointURL,
+                        soapAction: operation.soapAction?.rawValue
+                    )
+                    response = try wireCodec.decodeResponseMessage(operation: operation, from: responseMessage)
+                } else {
+                    let responseXMLData = try await transport.send(
+                        requestMessage.envelopeXMLData,
+                        to: endpointURL,
+                        soapAction: operation.soapAction?.rawValue
+                    )
+                    response = try wireCodec.decodeResponseEnvelope(operation: operation, from: responseXMLData)
+                }
                 promise.succeed(response)
             } catch {
                 promise.fail(error)
