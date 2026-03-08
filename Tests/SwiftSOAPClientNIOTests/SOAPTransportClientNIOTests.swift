@@ -35,6 +35,36 @@ final class SOAPTransportClientNIOTests: XCTestCase {
             XCTFail("Expected success response.")
         }
     }
+
+    func test_invoke_usesAttachmentTransportPathWhenAvailable() async throws {
+        let transport = StubAttachmentClientTransport()
+        let client = SOAPTransportClientNIO(transport: transport)
+        let endpointURL = try XCTUnwrap(URL(string: "https://example.com/soap"))
+        let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        addTeardownBlock {
+            try await eventLoopGroup.shutdownGracefully()
+        }
+        let eventLoop = eventLoopGroup.next()
+
+        let response = try await client.invoke(
+            PingOperation.self,
+            request: PingRequestPayload(message: "ping"),
+            endpointURL: endpointURL,
+            on: eventLoop
+        ).get()
+
+        let dataSendCallCount = await transport.dataSendCallCount
+        let messageSendCallCount = await transport.messageSendCallCount
+        XCTAssertEqual(dataSendCallCount, 0)
+        XCTAssertEqual(messageSendCallCount, 1)
+
+        switch response {
+        case .success(let payload):
+            XCTAssertEqual(payload.message, "pong")
+        case .fault:
+            XCTFail("Expected success response.")
+        }
+    }
 }
 
 private struct PingRequestPayload: SOAPBodyPayload, Equatable {
@@ -77,5 +107,37 @@ private actor StubClientTransport: SOAPClientTransport {
             PingResponsePayload(message: request.message == "ping" ? "pong" : "unexpected")
         )
         return try codec.encodeResponseEnvelope(operation: PingOperation.self, response: response)
+    }
+}
+
+private actor StubAttachmentClientTransport: SOAPClientAttachmentTransport {
+    let codec = SOAPXMLWireCodec()
+    private(set) var dataSendCallCount = 0
+    private(set) var messageSendCallCount = 0
+
+    func send(_ request: SOAPTransportMessage, to endpointURL: URL, soapAction: String?) async throws -> SOAPTransportMessage {
+        _ = endpointURL
+        _ = soapAction
+        messageSendCallCount += 1
+
+        let requestPayload = try codec.decodeRequestMessage(
+            operation: PingOperation.self,
+            from: request
+        )
+        let response: SOAPOperationResponse<PingResponsePayload, PingFaultDetailPayload> = .success(
+            PingResponsePayload(message: requestPayload.message == "ping" ? "pong" : "unexpected")
+        )
+        return try codec.encodeResponseMessage(
+            operation: PingOperation.self,
+            response: response
+        )
+    }
+
+    func send(_ requestXMLData: Data, to endpointURL: URL, soapAction: String?) async throws -> Data {
+        _ = requestXMLData
+        _ = endpointURL
+        _ = soapAction
+        dataSendCallCount += 1
+        return Data()
     }
 }

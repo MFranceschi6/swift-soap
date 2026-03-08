@@ -78,6 +78,10 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - new `SOAPXMLWireCodec` in `SwiftSOAPCore` for SOAP envelope/body/fault XML encode/decode;
   - new transport-backed runtime clients `SOAPTransportClientAsync` and `SOAPTransportClientNIO`;
   - generated runtime integration now exercises real XML `Data` wire roundtrip on Async and NIO paths.
+- Added XML Step `6.10B` attachment-ready transport/codec contract:
+  - new message-level transport envelope (`SOAPTransportMessage`) and attachment model (`SOAPAttachment`, `SOAPAttachmentManifest`);
+  - new optional client transport protocol `SOAPClientAttachmentTransport` for attachment-capable paths with backward-compatible fallback to `SOAPClientTransport`;
+  - deterministic `xop:Include`/`cid:` reference validation at codec boundary with explicit diagnostics for missing/invalid attachment references.
 
 ### Changed
 - Added a fixed local commit gate with versioned Git hooks:

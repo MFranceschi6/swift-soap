@@ -8,9 +8,18 @@ extension SOAPTransportClientAsync: SOAPClientAsync {
         request: Operation.RequestPayload,
         endpointURL: URL
     ) async throws(any Error) -> SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload> {
-        let requestXMLData = try wireCodec.encodeRequestEnvelope(operation: operation, request: request)
+        let requestMessage = try wireCodec.encodeRequestMessage(operation: operation, request: request)
+        if let attachmentTransport = transport as? any SOAPClientAttachmentTransport {
+            let responseMessage = try await attachmentTransport.send(
+                requestMessage,
+                to: endpointURL,
+                soapAction: operation.soapAction?.rawValue
+            )
+            return try wireCodec.decodeResponseMessage(operation: operation, from: responseMessage)
+        }
+
         let responseXMLData = try await transport.send(
-            requestXMLData,
+            requestMessage.envelopeXMLData,
             to: endpointURL,
             soapAction: operation.soapAction?.rawValue
         )
@@ -22,9 +31,18 @@ extension SOAPTransportClientAsync: SOAPClientAsync {
         request: Operation.RequestPayload,
         endpointURL: URL
     ) async throws -> SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload> {
-        let requestXMLData = try wireCodec.encodeRequestEnvelope(operation: operation, request: request)
+        let requestMessage = try wireCodec.encodeRequestMessage(operation: operation, request: request)
+        if let attachmentTransport = transport as? any SOAPClientAttachmentTransport {
+            let responseMessage = try await attachmentTransport.send(
+                requestMessage,
+                to: endpointURL,
+                soapAction: operation.soapAction?.rawValue
+            )
+            return try wireCodec.decodeResponseMessage(operation: operation, from: responseMessage)
+        }
+
         let responseXMLData = try await transport.send(
-            requestXMLData,
+            requestMessage.envelopeXMLData,
             to: endpointURL,
             soapAction: operation.soapAction?.rawValue
         )
