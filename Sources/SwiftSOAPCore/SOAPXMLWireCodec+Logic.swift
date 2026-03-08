@@ -41,7 +41,7 @@ extension SOAPXMLWireCodec {
         request: Operation.RequestPayload,
         attachmentManifest: SOAPAttachmentManifest = .empty
     ) throws -> SOAPTransportMessage {
-        let envelopeData = try encodeEnvelopeData(operation: operation, response: nil, request: request)
+        let envelopeData = try encodeEnvelopeData(operation: operation, payload: .request(request))
         let envelope = try parseEnvelope(data: envelopeData)
         try validateAttachmentReferences(in: envelope, manifest: attachmentManifest)
         return SOAPTransportMessage(
@@ -116,7 +116,7 @@ extension SOAPXMLWireCodec {
         response: SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload>,
         attachmentManifest: SOAPAttachmentManifest = .empty
     ) throws -> SOAPTransportMessage {
-        let envelopeData = try encodeEnvelopeData(operation: operation, response: response, request: nil)
+        let envelopeData = try encodeEnvelopeData(operation: operation, payload: .response(response))
         let envelope = try parseEnvelope(data: envelopeData)
         try validateAttachmentReferences(in: envelope, manifest: attachmentManifest)
         return SOAPTransportMessage(
@@ -131,10 +131,15 @@ private extension SOAPXMLWireCodec {
         "http://www.w3.org/2004/08/xop/include"
     }
 
+    /// Discriminates the envelope payload without requiring two mutually exclusive optionals.
+    enum _EnvelopePayload<RequestPayload: SOAPBodyPayload, ResponsePayload: SOAPBodyPayload, FaultDetailPayload: SOAPFaultDetailPayload> {
+        case request(RequestPayload)
+        case response(SOAPOperationResponse<ResponsePayload, FaultDetailPayload>)
+    }
+
     func encodeEnvelopeData<Operation: SOAPOperationContract>(
         operation: Operation.Type,
-        response: SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload>?,
-        request: Operation.RequestPayload?
+        payload: _EnvelopePayload<Operation.RequestPayload, Operation.ResponsePayload, Operation.FaultDetailPayload>
     ) throws -> Data {
         let metadata = bindingMetadata(for: operation)
         try validateBinding(metadata: metadata)
@@ -152,19 +157,16 @@ private extension SOAPXMLWireCodec {
         )
 
         let bodyChild: XMLTreeElement
-        if let request {
+        switch payload {
+        case .request(let request):
             bodyChild = try encodePayloadElement(request, with: configuration.requestEncoder)
-        } else if let response {
+        case .response(let response):
             switch response {
-            case .success(let payload):
-                bodyChild = try encodePayloadElement(payload, with: configuration.responseEncoder)
+            case .success(let responsePayload):
+                bodyChild = try encodePayloadElement(responsePayload, with: configuration.responseEncoder)
             case .fault(let fault):
                 bodyChild = try encodeFaultElement(fault: fault, metadata: metadata)
             }
-        } else {
-            throw SOAPCoreError.invalidBodyConfiguration(
-                message: "Exactly one payload source is required to encode a SOAP envelope."
-            )
         }
 
         let bodyElement = XMLTreeElement(name: bodyQName, children: [.element(bodyChild)])

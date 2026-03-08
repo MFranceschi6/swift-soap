@@ -39,7 +39,7 @@ public struct SwiftCodeEmitter: SwiftSourceEmitter {
         lines.append("")
 
         for generatedType in ir.generatedTypes {
-            lines.append(contentsOf: emitType(generatedType))
+            lines.append(contentsOf: emitType(generatedType, validationProfile: ir.validationProfile))
             lines.append("")
         }
 
@@ -79,45 +79,97 @@ public struct SwiftCodeEmitter: SwiftSourceEmitter {
         return lines.joined(separator: "\n")
     }
 
-    private func emitType(_ generatedType: GeneratedTypeIR) -> [String] {
+    private func emitType(_ generatedType: GeneratedTypeIR, validationProfile: ValidationProfile) -> [String] {
         switch generatedType.kind {
         case .bodyPayload:
             return emitStruct(
                 name: generatedType.swiftTypeName,
                 protocols: ["SOAPBodyPayload", "Equatable"],
-                fields: generatedType.fields
+                fields: generatedType.fields,
+                validationProfile: validationProfile
             )
         case .faultDetailPayload:
             return emitStruct(
                 name: generatedType.swiftTypeName,
                 protocols: ["SOAPFaultDetailPayload", "Equatable"],
-                fields: generatedType.fields
+                fields: generatedType.fields,
+                validationProfile: validationProfile
             )
         case .schemaModel:
             return emitStruct(
                 name: generatedType.swiftTypeName,
                 protocols: ["Codable", "Sendable", "Equatable"],
-                fields: generatedType.fields
+                fields: generatedType.fields,
+                validationProfile: validationProfile
             )
+        case .enumeration:
+            return emitEnumType(generatedType)
         }
     }
 
-    private func emitStruct(name: String, protocols: [String], fields: [GeneratedTypeFieldIR]) -> [String] {
+    private func emitEnumType(_ generatedType: GeneratedTypeIR) -> [String] {
         var lines: [String] = []
+        lines.append("public enum \(generatedType.swiftTypeName): String, Codable, Sendable, Equatable {")
+        for rawValue in generatedType.enumerationCases {
+            let caseName = sanitizeEnumCaseName(rawValue)
+            if caseName == rawValue {
+                lines.append("    case \(caseName)")
+            } else {
+                lines.append("    case \(caseName) = \"\(rawValue)\"")
+            }
+        }
+        lines.append("}")
+        return lines
+    }
+
+    // swiftlint:disable:next function_body_length
+    private func emitStruct(
+        name: String,
+        protocols: [String],
+        fields: [GeneratedTypeFieldIR],
+        validationProfile: ValidationProfile
+    ) -> [String] {
+        var lines: [String] = []
+        let orderedFields = fields.sorted { lhs, rhs in
+            switch (lhs.xmlOrder, rhs.xmlOrder) {
+            case let (l?, r?): return l < r
+            default: return false
+            }
+        }
+
+        let needsCodingKeys = orderedFields.contains { field in
+            guard let xmlName = field.xmlName else { return false }
+            return xmlName != field.name
+        }
+
         lines.append("public struct \(name): \(protocols.joined(separator: ", ")) {")
 
-        if fields.isEmpty {
+        if orderedFields.isEmpty {
             lines.append("    public init() {}")
             lines.append("}")
             return lines
         }
 
-        for field in fields {
+        for field in orderedFields {
             let optionalSuffix = field.isOptional ? "?" : ""
             lines.append("    public var \(field.name): \(field.swiftTypeName)\(optionalSuffix)")
         }
 
-        let initializerSignature = fields
+        if needsCodingKeys {
+            lines.append("")
+            lines.append("    public enum CodingKeys: String, CodingKey {")
+            for field in orderedFields {
+                let xmlName = field.xmlName ?? field.name
+                if xmlName != field.name {
+                    lines.append("        case \(field.name) = \"\(xmlName)\"")
+                } else {
+                    lines.append("        case \(field.name)")
+                }
+            }
+            lines.append("    }")
+        }
+
+        let initializerSignature = orderedFields
             .map { field -> String in
                 let optionalSuffix = field.isOptional ? "?" : ""
                 return "\(field.name): \(field.swiftTypeName)\(optionalSuffix)"
@@ -125,13 +177,88 @@ public struct SwiftCodeEmitter: SwiftSourceEmitter {
             .joined(separator: ", ")
         lines.append("")
         lines.append("    public init(\(initializerSignature)) {")
-        for field in fields {
+        for field in orderedFields {
             lines.append("        self.\(field.name) = \(field.name)")
         }
         lines.append("    }")
-        lines.append("}")
 
+        if validationProfile == .strict {
+            let constrainedFields = orderedFields.filter { !$0.constraints.isEmpty }
+            if !constrainedFields.isEmpty {
+                lines.append("")
+                lines.append("    /// Validates field constraints derived from XSD facets.")
+                lines.append("    /// - Throws: `SOAPSemanticValidationError` on constraint violation.")
+                lines.append("    public func validate() throws {")
+                for field in constrainedFields {
+                    lines.append(contentsOf: emitFieldValidation(field: field))
+                }
+                lines.append("    }")
+            }
+        }
+
+        lines.append("}")
         return lines
+    }
+
+    private func emitFieldValidation(field: GeneratedTypeFieldIR) -> [String] {
+        var lines: [String] = []
+        let access = field.isOptional ? "\(field.name).map { $0 }" : "\(field.name)"
+        _ = access
+        for constraint in field.constraints {
+            switch constraint.kind {
+            case .minLength:
+                let check = field.isOptional
+                    ? "if let v = \(field.name), v.count < \(constraint.value)"
+                    : "if \(field.name).count < \(constraint.value)"
+                lines.append("        \(check) {")
+                lines.append("            throw SOAPSemanticValidationError(field: \"\(field.name)\", code: \"[CG_SEMANTIC_001]\", message: \"Value is shorter than minLength \(constraint.value).\")")
+                lines.append("        }")
+            case .maxLength:
+                let check = field.isOptional
+                    ? "if let v = \(field.name), v.count > \(constraint.value)"
+                    : "if \(field.name).count > \(constraint.value)"
+                lines.append("        \(check) {")
+                lines.append("            throw SOAPSemanticValidationError(field: \"\(field.name)\", code: \"[CG_SEMANTIC_002]\", message: \"Value exceeds maxLength \(constraint.value).\")")
+                lines.append("        }")
+            case .length:
+                let check = field.isOptional
+                    ? "if let v = \(field.name), v.count != \(constraint.value)"
+                    : "if \(field.name).count != \(constraint.value)"
+                lines.append("        \(check) {")
+                lines.append("            throw SOAPSemanticValidationError(field: \"\(field.name)\", code: \"[CG_SEMANTIC_003]\", message: \"Value length must be exactly \(constraint.value).\")")
+                lines.append("        }")
+            case .pattern:
+                let src = field.isOptional ? "\(field.name) ?? \"\"" : "\(field.name)"
+                lines.append("        if (try? NSRegularExpression(pattern: \"\(constraint.value)\"))?.firstMatch(in: \(src), range: NSRange(\(src).startIndex..., in: \(src))) == nil {")
+                lines.append("            throw SOAPSemanticValidationError(field: \"\(field.name)\", code: \"[CG_SEMANTIC_004]\", message: \"Value does not match pattern \\\"\(constraint.value)\\\".\")")
+                lines.append("        }")
+            default:
+                break
+            }
+        }
+        return lines
+    }
+
+    private func sanitizeEnumCaseName(_ rawValue: String) -> String {
+        let tokens = rawValue
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map(String.init)
+            .filter { !$0.isEmpty }
+        guard !tokens.isEmpty else { return "unknown" }
+        var result = tokens[0].prefix(1).lowercased() + tokens[0].dropFirst()
+        if tokens.count > 1 {
+            for token in tokens.dropFirst() {
+                result += token.prefix(1).uppercased() + token.dropFirst().lowercased()
+            }
+        }
+        if let first = result.first, first.isNumber {
+            return "value\(result)"
+        }
+        let reserved: Set<String> = ["class", "struct", "enum", "protocol", "func", "let", "var", "extension", "default", "case"]
+        if reserved.contains(result) {
+            return "`\(result)`"
+        }
+        return result
     }
 
     private func emitOperationContract(_ operation: OperationIR) -> [String] {

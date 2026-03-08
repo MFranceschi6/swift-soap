@@ -190,3 +190,52 @@ private enum UnsupportedDocumentEncodedOperation: SOAPBindingOperationContract {
     typealias ResponsePayload = PingResponsePayload
     typealias FaultDetailPayload = PingFaultDetailPayload
 }
+
+// MARK: - XML-6.10C coverage: SOAPCoreError.semanticValidationFailed and SOAPSemanticValidationError
+
+extension SOAPXMLWireCodecTests {
+    func test_semanticValidationFailed_coreError_isDistinct() {
+        let error = SOAPCoreError.semanticValidationFailed(
+            field: "postalCode",
+            code: "[CG_SEMANTIC_001]",
+            message: "Value is shorter than minLength 4."
+        )
+
+        if case SOAPCoreError.semanticValidationFailed(let field, let code, let message) = error {
+            XCTAssertEqual(field, "postalCode")
+            XCTAssertEqual(code, "[CG_SEMANTIC_001]")
+            XCTAssertEqual(message, "Value is shorter than minLength 4.")
+        } else {
+            XCTFail("Expected semanticValidationFailed case.")
+        }
+    }
+
+    func test_soAPSemanticValidationError_isError() {
+        let error = SOAPSemanticValidationError(
+            field: "amount",
+            code: "[CG_SEMANTIC_003]",
+            message: "Value length must be exactly 8."
+        )
+        XCTAssertEqual(error.field, "amount")
+        XCTAssertEqual(error.code, "[CG_SEMANTIC_003]")
+        XCTAssertEqual(error.message, "Value length must be exactly 8.")
+    }
+
+    func test_soAPSemanticValidable_protocol_conformance() {
+        struct TestValidatable: SOAPSemanticValidatable {
+            let value: String
+            func validate() throws {
+                if value.isEmpty {
+                    throw SOAPSemanticValidationError(field: "value", code: "[CG_SEMANTIC_001]")
+                }
+            }
+        }
+        XCTAssertNoThrow(try TestValidatable(value: "ok").validate())
+        XCTAssertThrowsError(try TestValidatable(value: "").validate()) { error in
+            guard let semanticError = error as? SOAPSemanticValidationError else {
+                return XCTFail("Expected SOAPSemanticValidationError")
+            }
+            XCTAssertEqual(semanticError.field, "value")
+        }
+    }
+}

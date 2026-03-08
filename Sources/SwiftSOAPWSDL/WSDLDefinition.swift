@@ -308,17 +308,65 @@ extension WSDLDefinition {
         }
     }
 
+    public struct Facets: Sendable, Equatable {
+        public let enumeration: [String]
+        public let pattern: String?
+        public let minLength: Int?
+        public let maxLength: Int?
+        public let length: Int?
+        public let minInclusive: String?
+        public let maxInclusive: String?
+        public let totalDigits: Int?
+        public let fractionDigits: Int?
+
+        public init(
+            enumeration: [String] = [],
+            pattern: String? = nil,
+            minLength: Int? = nil,
+            maxLength: Int? = nil,
+            length: Int? = nil,
+            minInclusive: String? = nil,
+            maxInclusive: String? = nil,
+            totalDigits: Int? = nil,
+            fractionDigits: Int? = nil
+        ) {
+            self.enumeration = enumeration
+            self.pattern = pattern
+            self.minLength = minLength
+            self.maxLength = maxLength
+            self.length = length
+            self.minInclusive = minInclusive
+            self.maxInclusive = maxInclusive
+            self.totalDigits = totalDigits
+            self.fractionDigits = fractionDigits
+        }
+
+        public var isEmpty: Bool {
+            enumeration.isEmpty && pattern == nil && minLength == nil &&
+            maxLength == nil && length == nil && minInclusive == nil &&
+            maxInclusive == nil && totalDigits == nil && fractionDigits == nil
+        }
+    }
+
     public struct SimpleType: Sendable, Equatable {
         public let name: String
         public let baseQName: QName?
         public let enumerationValues: [String]
         public let pattern: String?
+        public let facets: Facets?
 
-        public init(name: String, baseQName: QName?, enumerationValues: [String], pattern: String?) {
+        public init(
+            name: String,
+            baseQName: QName?,
+            enumerationValues: [String],
+            pattern: String?,
+            facets: Facets? = nil
+        ) {
             self.name = name
             self.baseQName = baseQName
             self.enumerationValues = enumerationValues
             self.pattern = pattern
+            self.facets = facets
         }
     }
 

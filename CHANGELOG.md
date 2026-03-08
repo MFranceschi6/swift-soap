@@ -6,7 +6,63 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Added (Epic 6B closure — XML-6.10C/D, XML-6.11A/B/C/D/E)
+
+#### XML-6.10C — Hybrid semantic validation profiles
+- Added `WSDLDefinition.Schema.Facets` struct capturing all XSD restriction facets
+  (`enumeration`, `pattern`, `minLength`, `maxLength`, `length`, `minInclusive`,
+  `maxInclusive`, `totalDigits`, `fractionDigits`).
+- Extended `WSDLDefinition.SimpleType` with `facets: Facets?`; parser now populates
+  all XSD facets alongside the existing `enumerationValues`/`pattern` fields.
+- Added `ValidationProfile` enum (`strict` | `lenient`) to `CodeGenConfiguration`;
+  defaults to `.strict`. Backward-compatible JSON decoding via `decodeIfPresent`.
+- Added `GeneratedTypeKind.enumeration` case for XSD simpleTypes with enumeration facets.
+- Added `FacetConstraintIR` (kind + value string) and `constraints: [FacetConstraintIR]`
+  to `GeneratedTypeFieldIR`; `xmlName: String?` and `xmlOrder: Int?` also added.
+- `SwiftCodeEmitter` now emits `public enum Foo: String, Codable, Sendable, Equatable`
+  for `.enumeration` IR types and `public func validate() throws` for constrained
+  struct fields when `validationProfile == .strict`.
+- Added `SOAPSemanticValidatable` protocol and `SOAPSemanticValidationError` to
+  `SwiftSOAPCore`; added `SOAPCoreError.semanticValidationFailed(field:code:message:)`.
+
+#### XML-6.10D — Advanced mapping synthesis
+- XSD required-field fix: `minOccurs` absent now correctly generates non-optional Swift
+  fields (previous behaviour: `nil` minOccurs was treated as optional).
+- `xmlName` and `xmlOrder` are populated from XSD element names and sequence order;
+  `SwiftCodeEmitter` emits `enum CodingKeys` when any field has a divergent XML name.
+- Golden snapshots updated: `MatrixPayload.value` is now `String` (non-optional).
+
+#### XML-6.11A — Lint governance
+- Added `Tests/.swiftlint.yml` with relaxed thresholds for test targets:
+  `function_body_length` (120/200), `type_body_length` (450/600), `file_length` (700/1200).
+
+#### XML-6.11B — Coverage gate hardening
+- Added `SemanticValidationIRTests` with 9 tests covering enumeration IR generation,
+  facet constraint population, CodingKeys emission, validate() emission, required-field
+  fix, and `ValidationProfile` configuration.
+- Added 3 tests to `SOAPXMLWireCodecTests` covering `SOAPCoreError.semanticValidationFailed`,
+  `SOAPSemanticValidationError`, and `SOAPSemanticValidatable` protocol conformance.
+- Added 2 WSDL parser tests for XSD facet parsing (non-enumeration and enumeration cases).
+
+#### XML-6.11C — Style/structure compliance sweep
+- Renamed `XMLEncoder+Runtime.swift` → `XMLEncoder+Codable.swift` (semantically accurate).
+- Renamed `XMLDecoder+Runtime.swift` → `XMLDecoder+Codable.swift`.
+- Refactored `SOAPXMLWireCodec+Logic.swift`: replaced the two-optional
+  `encodeEnvelopeData(operation:response:request:)` with a private `_EnvelopePayload`
+  enum (`request` | `response`) eliminating the mutually-exclusive optional antipattern.
+
+#### XML-6.11D — Documentation closure
+- Added comprehensive doc comments to `XMLEncoder.swift` and `XMLDecoder.swift`:
+  all strategies, `Configuration` properties, `encodeTree`/`encode` and
+  `decodeTree`/`decode` methods fully documented.
+
+#### XML-6.11E — Test toolkit product release gate
+- `SwiftSOAPXMLTestSupport` is now exposed as a public library product in all four
+  modern package manifests (`Package@swift-5.6`, `5.9`, `6.0`, `6.1`).
+  Stability policy: **public experimental** until post-v1 freeze.
+
 ### Added
+
 - Introduced the initial `SwiftSOAPCore` module with typed, `Codable` and `Sendable` SOAP domain models:
   - `SOAPEnvelope`, `SOAPBody`, `SOAPHeader`, `SOAPFault`.
   - payload protocols (`SOAPBodyPayload`, `SOAPHeaderPayload`, `SOAPFaultDetailPayload`) and empty marker payloads.

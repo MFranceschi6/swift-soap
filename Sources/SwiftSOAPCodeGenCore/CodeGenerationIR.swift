@@ -7,19 +7,22 @@ public struct SOAPCodeGenerationIR: Sendable, Equatable {
     public let runtimeTargets: Set<CodeGenerationRuntimeTargetOption>
     public let generatedTypes: [GeneratedTypeIR]
     public let services: [ServiceIR]
+    public let validationProfile: ValidationProfile
 
     public init(
         moduleName: String,
         generationScope: Set<CodeGenerationScopeOption>,
         runtimeTargets: Set<CodeGenerationRuntimeTargetOption>,
         generatedTypes: [GeneratedTypeIR],
-        services: [ServiceIR]
+        services: [ServiceIR],
+        validationProfile: ValidationProfile = .strict
     ) {
         self.moduleName = moduleName
         self.generationScope = generationScope
         self.runtimeTargets = runtimeTargets
         self.generatedTypes = generatedTypes
         self.services = services
+        self.validationProfile = validationProfile
     }
 }
 
@@ -27,17 +30,56 @@ public enum GeneratedTypeKind: String, Sendable, Equatable {
     case bodyPayload
     case faultDetailPayload
     case schemaModel
+    /// XSD simpleType with enumeration facet — emitted as a Swift `enum : String`.
+    case enumeration
+}
+
+public enum FacetConstraintKind: String, Sendable, Equatable {
+    case minLength
+    case maxLength
+    case length
+    case pattern
+    case minInclusive
+    case maxInclusive
+    case totalDigits
+    case fractionDigits
+}
+
+public struct FacetConstraintIR: Sendable, Equatable {
+    public let kind: FacetConstraintKind
+    public let value: String
+
+    public init(kind: FacetConstraintKind, value: String) {
+        self.kind = kind
+        self.value = value
+    }
 }
 
 public struct GeneratedTypeFieldIR: Sendable, Equatable {
     public let name: String
     public let swiftTypeName: String
     public let isOptional: Bool
+    /// XML element/attribute name when it differs from the sanitized Swift name; nil = same as name.
+    public let xmlName: String?
+    /// Position in the XSD sequence; nil = unspecified.
+    public let xmlOrder: Int?
+    /// XSD facet constraints for non-enumeration validation.
+    public let constraints: [FacetConstraintIR]
 
-    public init(name: String, swiftTypeName: String, isOptional: Bool) {
+    public init(
+        name: String,
+        swiftTypeName: String,
+        isOptional: Bool,
+        xmlName: String? = nil,
+        xmlOrder: Int? = nil,
+        constraints: [FacetConstraintIR] = []
+    ) {
         self.name = name
         self.swiftTypeName = swiftTypeName
         self.isOptional = isOptional
+        self.xmlName = xmlName
+        self.xmlOrder = xmlOrder
+        self.constraints = constraints
     }
 }
 
@@ -45,11 +87,19 @@ public struct GeneratedTypeIR: Sendable, Equatable {
     public let swiftTypeName: String
     public let kind: GeneratedTypeKind
     public let fields: [GeneratedTypeFieldIR]
+    /// Populated only for `kind == .enumeration`; raw string values of each enum case.
+    public let enumerationCases: [String]
 
-    public init(swiftTypeName: String, kind: GeneratedTypeKind, fields: [GeneratedTypeFieldIR]) {
+    public init(
+        swiftTypeName: String,
+        kind: GeneratedTypeKind,
+        fields: [GeneratedTypeFieldIR],
+        enumerationCases: [String] = []
+    ) {
         self.swiftTypeName = swiftTypeName
         self.kind = kind
         self.fields = fields
+        self.enumerationCases = enumerationCases
     }
 }
 
