@@ -51,4 +51,22 @@ final class CodeGenCommandLineParserTests: XCTestCase {
             XCTAssertEqual(codeGenError.code, .invalidInput)
         }
     }
+
+    // MARK: - CodeGenError.description coverage
+
+    func test_codeGenError_description_withSuggestion_includesSuggestion() {
+        let error = CodeGenError(code: .invalidConfiguration, message: "bad config", suggestion: "try X")
+        let desc = error.description
+        XCTAssertTrue(desc.contains("[CG004]"))
+        XCTAssertTrue(desc.contains("bad config"))
+        XCTAssertTrue(desc.contains("try X"))
+    }
+
+    func test_codeGenError_description_withoutSuggestion_omitsSuggestion() {
+        let error = CodeGenError(code: .unresolvedReference, message: "missing ref")
+        let desc = error.description
+        XCTAssertTrue(desc.contains("[CG001]"))
+        XCTAssertTrue(desc.contains("missing ref"))
+        XCTAssertFalse(desc.contains("Suggestion"))
+    }
 }

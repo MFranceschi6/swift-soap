@@ -15,3 +15,27 @@ type_body_length:
 file_length:
   warning: 700
   error: 1200
+
+# identifier_name: allow single-character locals in test code.
+# Patterns like `let r = try decoder.decode(...)` (result),
+# `var c = try decoder.unkeyedContainer()` (container),
+# `if case .element(let e) = node` (element),
+# `if case .text(let t) = node` (text) are idiomatic in XCTest
+# encode/decode roundtrip boilerplate and improve readability by
+# reducing noise in already-repetitive fixture code. The rule exists
+# to prevent cryptic names in production code, not in test fixtures.
+identifier_name:
+  min_length:
+    warning: 1
+    error: 1
+
+# force_unwrapping: downgrade to warning in test targets.
+# Test fixtures commonly force-unwrap known-valid literals such as
+# URL(string: "https://...")! and UUID(uuidString: "E621...")!.
+# In XCTest, a force-unwrap crash produces a test failure (the test
+# is red) — the only difference vs XCTUnwrap is a less readable
+# failure message. Keeping it as a warning (not error) avoids
+# CI breakage while preserving the intent to prefer XCTUnwrap
+# in new code.
+force_unwrapping:
+  severity: warning

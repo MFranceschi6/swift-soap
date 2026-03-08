@@ -283,4 +283,47 @@ final class SOAPModelTests: XCTestCase {
         XCTAssertEqual(decodedFault, fault)
         XCTAssertEqual(decodedFault.detail?.missingField, "city")
     }
+
+    func test_soapOperationContract_defaultSoapAction_isNil() {
+        // Covers SOAPOperationContract+Defaults.swift: default soapAction extension returns nil
+        struct DummyRequest: SOAPBodyPayload {}
+        struct DummyResponse: SOAPBodyPayload {}
+        struct DummyFaultDetail: SOAPFaultDetailPayload {}
+        struct DummyOperation: SOAPOperationContract {
+            typealias RequestPayload = DummyRequest
+            typealias ResponsePayload = DummyResponse
+            typealias FaultDetailPayload = DummyFaultDetail
+            static let operationIdentifier = SOAPOperationIdentifier(rawValue: "Dummy")
+        }
+        XCTAssertNil(DummyOperation.soapAction)
+    }
+
+    // MARK: - SOAPEnvelope.init(payload:namespaceURI:) coverage
+
+    func test_soapEnvelope_initPayloadNamespaceURI_soap11_succeeds() throws {
+        // Covers SOAPEnvelope.init(payload:namespaceURI:) typed-throw overload (lines 66, 68)
+        let payload = WeatherRequest(city: "Rome", unit: "C")
+        let soap11URI = SOAPEnvelope<
+            WeatherRequest,
+            SOAPEmptyHeaderPayload,
+            SOAPEmptyFaultDetailPayload
+        >.soap11NamespaceURI
+        let envelope = try SOAPEnvelope<
+            WeatherRequest,
+            SOAPEmptyHeaderPayload,
+            SOAPEmptyFaultDetailPayload
+        >(payload: payload, namespaceURI: soap11URI)
+        XCTAssertEqual(envelope.namespace, .soap11)
+        XCTAssertEqual(envelope.body.payload?.city, "Rome")
+    }
+
+    func test_soapEnvelope_initPayloadNamespaceURI_emptyURI_throws() {
+        let payload = WeatherRequest(city: "Rome", unit: "C")
+        XCTAssertThrowsError(
+            try SOAPEnvelope<WeatherRequest, SOAPEmptyHeaderPayload, SOAPEmptyFaultDetailPayload>(
+                payload: payload,
+                namespaceURI: ""
+            )
+        )
+    }
 }
