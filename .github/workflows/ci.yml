@@ -250,7 +250,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, macos-14]
+        # macos-14 temporarily disabled: Swift 6.2.1 triggers a spurious
+        # #MutableGlobalVariable error inside NIOEmbedded (DispatchSpecificKey
+        # not Sendable in macOS 14 SDK). Re-enable when setup-swift supports
+        # Swift 6.2.4+ which ships the fix.
+        os: [ubuntu-22.04]
     steps:
       - uses: actions/checkout@v4
 
