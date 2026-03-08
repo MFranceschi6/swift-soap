@@ -33,7 +33,7 @@ run_swiftlint_for_staged_swift_files() {
   done
 
   echo "commit gate: running swiftlint on staged Swift files (${#swift_files[@]} files)"
-  swiftlint lint --use-script-input-files
+  swiftlint lint --use-script-input-files --no-cache
 }
 
 validate_staged_source_file_structure() {

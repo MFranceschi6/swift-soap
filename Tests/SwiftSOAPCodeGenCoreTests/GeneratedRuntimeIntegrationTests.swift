@@ -2,6 +2,8 @@ import Foundation
 import SwiftSOAPCodeGenCore
 import XCTest
 
+// swiftlint:disable file_length
+// swiftlint:disable:next type_body_length
 final class GeneratedRuntimeIntegrationTests: XCTestCase {
     private struct FixtureProcessFailure: LocalizedError {
         let command: String
@@ -102,7 +104,7 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
                     name: "GeneratedRuntimeTests",
                     dependencies: [
                         "GeneratedRuntime",
-                        .product(name: "NIOEmbedded", package: "swift-nio")
+                        .product(name: "NIOPosix", package: "swift-nio")
                     ]
                 )
             ]
@@ -195,7 +197,7 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
         let tests = #"""
         import Foundation
         import NIOCore
-        import NIOEmbedded
+        import NIOPosix
         import SwiftSOAPClientAsync
         import SwiftSOAPClientNIO
         import SwiftSOAPCore
@@ -217,8 +219,12 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
                 try await asyncRegistrar.register(implementation: AsyncServiceImplementation())
                 try await asyncServer.start()
 
+                let wireCodec = SOAPXMLWireCodec()
                 let asyncClient = MatrixServiceMatrixPortAsyncClient(
-                    client: AsyncLoopbackClient(server: asyncServer),
+                    client: SOAPTransportClientAsync(
+                        transport: AsyncLoopbackTransport(server: asyncServer, codec: wireCodec),
+                        wireCodec: wireCodec
+                    ),
                     endpointURL: endpointURL
                 )
 
@@ -241,14 +247,21 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
 
                 try await asyncServer.stop()
 
-                let eventLoop = EmbeddedEventLoop()
+                let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+                addTeardownBlock {
+                    try await eventLoopGroup.shutdownGracefully()
+                }
+                let eventLoop = eventLoopGroup.next()
                 let nioServer = NIOLoopbackServer()
                 let nioRegistrar = MatrixServiceMatrixPortNIOServerRegistrar(server: nioServer)
                 nioRegistrar.register(implementation: NIOServiceImplementation())
                 try await nioServer.start(on: eventLoop).get()
 
                 let nioClient = MatrixServiceMatrixPortNIOClient(
-                    client: NIOLoopbackClient(server: nioServer),
+                    client: SOAPTransportClientNIO(
+                        transport: NIOLoopbackTransport(server: nioServer, codec: wireCodec, eventLoop: eventLoop),
+                        wireCodec: wireCodec
+                    ),
                     endpointURL: endpointURL
                 )
 
@@ -280,7 +293,12 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
         }
 
         private struct AsyncServiceImplementation: MatrixServiceMatrixPortAsyncService {
-            func transform(request: InputMessagePayload) async __ASYNC_THROWS_CLAUSE__ -> SOAPOperationResponse<OutputMessagePayload, FaultMessageFaultDetail> {
+            func transform(
+                request: InputMessagePayload
+            ) async __ASYNC_THROWS_CLAUSE__ -> SOAPOperationResponse<
+                OutputMessagePayload,
+                FaultMessageFaultDetail
+            > {
                 if request.value == "fault" {
                     let fault = try SOAPFault<FaultMessageFaultDetail>(
                         faultCode: .server,
@@ -312,7 +330,9 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
                     }
                 }
 
-                return eventLoop.makeSucceededFuture(.success(OutputMessagePayload(value: "pong:\(request.value ?? "nil")")))
+                return eventLoop.makeSucceededFuture(
+                    .success(OutputMessagePayload(value: "pong:\(request.value ?? "nil")"))
+                )
             }
         }
 
@@ -339,13 +359,19 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
             func dispatch<Operation: SOAPOperationContract>(
                 _ operation: Operation.Type,
                 request: Operation.RequestPayload
-            ) async __ASYNC_THROWS_CLAUSE__ -> SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload> {
+            ) async __ASYNC_THROWS_CLAUSE__ -> SOAPOperationResponse<
+                Operation.ResponsePayload,
+                Operation.FaultDetailPayload
+            > {
                 guard let handler = handlers[operation.operationIdentifier.rawValue] else {
                     throw SOAPCoreError.invalidPayload(message: "Missing async operation handler.")
                 }
 
                 let response = try await handler(request)
-                guard let typedResponse = response as? SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload> else {
+                guard let typedResponse = response as? SOAPOperationResponse<
+                    Operation.ResponsePayload,
+                    Operation.FaultDetailPayload
+                > else {
                     throw SOAPCoreError.invalidPayload(message: "Invalid async operation response payload.")
                 }
 
@@ -353,20 +379,34 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
             }
         }
 
-        private struct AsyncLoopbackClient: SOAPClientAsync {
+        private struct AsyncLoopbackTransport: SOAPClientTransport {
             let server: AsyncLoopbackServer
+            let codec: SOAPXMLWireCodec
 
-            func invoke<Operation: SOAPOperationContract>(
-                _ operation: Operation.Type,
-                request: Operation.RequestPayload,
-                endpointURL: URL
-            ) async __ASYNC_THROWS_CLAUSE__ -> SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload> {
+            func send(
+                _ requestXMLData: Data,
+                to endpointURL: URL,
+                soapAction: String?
+            ) async __ASYNC_THROWS_CLAUSE__ -> Data {
                 _ = endpointURL
-                return try await server.dispatch(operation, request: request)
+                _ = soapAction
+
+                let request = try codec.decodeRequestEnvelope(
+                    operation: MatrixServiceMatrixPortTransformOperation.self,
+                    from: requestXMLData
+                )
+                let response = try await server.dispatch(
+                    MatrixServiceMatrixPortTransformOperation.self,
+                    request: request
+                )
+                return try codec.encodeResponseEnvelope(
+                    operation: MatrixServiceMatrixPortTransformOperation.self,
+                    response: response
+                )
             }
         }
 
-        private final class NIOLoopbackServer: SOAPServerNIO {
+        private final class NIOLoopbackServer: SOAPServerNIO, @unchecked Sendable {
             typealias ErasedHandler = (Any, EventLoop) -> EventLoopFuture<Any>
 
             private var handlers: [String: ErasedHandler] = [:]
@@ -402,11 +442,16 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
                 on eventLoop: EventLoop
             ) -> EventLoopFuture<SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload>> {
                 guard let handler = handlers[operation.operationIdentifier.rawValue] else {
-                    return eventLoop.makeFailedFuture(SOAPCoreError.invalidPayload(message: "Missing NIO operation handler."))
+                    return eventLoop.makeFailedFuture(
+                        SOAPCoreError.invalidPayload(message: "Missing NIO operation handler.")
+                    )
                 }
 
                 return handler(request, eventLoop).flatMapThrowing { response in
-                    guard let typedResponse = response as? SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload> else {
+                    guard let typedResponse = response as? SOAPOperationResponse<
+                        Operation.ResponsePayload,
+                        Operation.FaultDetailPayload
+                    > else {
                         throw SOAPCoreError.invalidPayload(message: "Invalid NIO operation response payload.")
                     }
                     return typedResponse
@@ -414,17 +459,32 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
             }
         }
 
-        private struct NIOLoopbackClient: SOAPClientNIO {
+        private struct NIOLoopbackTransport: SOAPClientTransport {
             let server: NIOLoopbackServer
+            let codec: SOAPXMLWireCodec
+            let eventLoop: EventLoop
 
-            func invoke<Operation: SOAPOperationContract>(
-                _ operation: Operation.Type,
-                request: Operation.RequestPayload,
-                endpointURL: URL,
-                on eventLoop: EventLoop
-            ) -> EventLoopFuture<SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload>> {
+            func send(
+                _ requestXMLData: Data,
+                to endpointURL: URL,
+                soapAction: String?
+            ) async __ASYNC_THROWS_CLAUSE__ -> Data {
                 _ = endpointURL
-                return server.dispatch(operation, request: request, on: eventLoop)
+                _ = soapAction
+
+                let request = try codec.decodeRequestEnvelope(
+                    operation: MatrixServiceMatrixPortTransformOperation.self,
+                    from: requestXMLData
+                )
+                let response = try await server.dispatch(
+                    MatrixServiceMatrixPortTransformOperation.self,
+                    request: request,
+                    on: eventLoop
+                ).get()
+                return try codec.encodeResponseEnvelope(
+                    operation: MatrixServiceMatrixPortTransformOperation.self,
+                    response: response
+                )
             }
         }
         """#
@@ -456,10 +516,8 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
         process.currentDirectoryURL = currentDirectoryURL
         process.standardOutput = logHandle
         process.standardError = logHandle
-
         try process.run()
         process.waitUntilExit()
-
         if process.terminationStatus != 0 {
             let output = try String(contentsOf: logURL, encoding: .utf8)
             let command = ([executable] + arguments).joined(separator: " ")
@@ -467,3 +525,4 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
         }
     }
 }
+// swiftlint:enable file_length
