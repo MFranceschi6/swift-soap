@@ -320,7 +320,7 @@ final class XMLNamespaceResolverTests: XCTestCase {
                         value: "123"
                     )
                 ],
-                namespaceDeclarations: [XMLNamespaceDeclaration(prefix: "a", uri: "urn:attrs")],
+                namespaceDeclarations: [XMLNamespaceDeclaration(prefix: "a", uri: "urn:attrs")]
             )
         )
         XCTAssertNoThrow(try XMLNamespaceValidator.validate(document: tree, mode: .synthesizeMissingDeclarations))
