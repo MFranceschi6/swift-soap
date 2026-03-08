@@ -7,7 +7,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 ## [Unreleased]
 
 ### Fixed
-- Fixed Linux CI build failure by adding missing `SwiftSOAPCompatibility` imports in `XMLTreeParser+Logic.swift` and `XMLTreeWriter+Logic.swift`, ensuring `libxml2` constants are available on Linux.
+- Fixed Linux CI build failure by adding missing `SwiftSOAPCompatibility` imports in `XMLTreeParser+Logic.swift` and `XMLTreeWriter+Logic.swift`.
+- Implemented an `@inlinable` URL parity hotfix for Swift < 6 to ensure consistent parsing of malformed brackets and auto-encoding of spaces across all platforms.
 
 ### Added (Epic 6B closure — XML-6.10C/D, XML-6.11A/B/C/D/E)
 
