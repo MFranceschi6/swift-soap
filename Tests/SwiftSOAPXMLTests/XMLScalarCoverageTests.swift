@@ -344,6 +344,17 @@ final class XMLScalarCoverageTests: XCTestCase {
         }
     }
 
+    func test_decode_urlWithSpaces_percentEncodesAndSucceeds() throws {
+        // On Linux swift-corelibs-foundation (Swift < 6) spaces are not auto-encoded by
+        // URL(string:), so _xmlParityDecodeURL must encode them explicitly.
+        // On Darwin and Swift 6+ Foundation, URL(string:) already handles this correctly.
+        // The test verifies the decoded URL carries percent-encoded spaces on all platforms.
+        let xml = Data("<Endpoint>https://example.com/path with spaces</Endpoint>".utf8)
+        let decoder = XMLDecoder(configuration: .init(rootElementName: "Endpoint"))
+        let decoded = try decoder.decode(URL.self, from: xml)
+        XCTAssertEqual(decoded.absoluteString, "https://example.com/path%20with%20spaces")
+    }
+
     func test_decode_invalidUUID_throwsParseFailed() throws {
         let xml = Data("<ID>not-a-uuid</ID>".utf8)
         let decoder = XMLDecoder(configuration: .init(rootElementName: "ID"))
