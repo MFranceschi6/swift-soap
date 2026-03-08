@@ -225,12 +225,21 @@ final class _XMLTreeDecoder: Decoder {
         }
 
         if type == URL.self {
+            #if swift(<6.0)
+            guard let parsed = _xmlParityDecodeURL(lexical) else {
+                throw XMLParsingError.parseFailed(
+                    message: "[XML6_5C_URL_PARSE_FAILED] Unable to parse URL from '\(lexical)' at path '\(renderCodingPath(codingPath))'."
+                )
+            }
+            return parsed as? T
+            #else
             guard let parsed = URL(string: lexical) else {
                 throw XMLParsingError.parseFailed(
                     message: "[XML6_5C_URL_PARSE_FAILED] Unable to parse URL from '\(lexical)' at path '\(renderCodingPath(codingPath))'."
                 )
             }
             return parsed as? T
+            #endif
         }
 
         if type == UUID.self {
@@ -814,3 +823,28 @@ struct _XMLSingleValueDecodingContainer: SingleValueDecodingContainer {
         return rendered.isEmpty ? "<root>" : rendered
     }
 }
+
+#if swift(<6.0)
+/// Internal hotfix to ensure Swift 5 parity with Swift 6 URL(string:) behavior.
+/// 1. Manually rejects malformed brackets (Swift 5 incorrectly accepts them).
+/// 2. Auto-encodes spaces (mimics Swift 6 behavior).
+@usableFromInline
+@inlinable
+internal func _xmlParityDecodeURL(_ lexical: String) -> URL? {
+    var balance = 0
+    for char in lexical {
+        if char == "[" { balance += 1 } else if char == "]" {
+            balance -= 1
+            if balance < 0 { return nil }
+        }
+    }
+    guard balance == 0 else { return nil }
+
+    if lexical.range(of: " ") != nil {
+        let encoded = lexical.replacingOccurrences(of: " ", with: "%20")
+        return URL(string: encoded)
+    }
+
+    return URL(string: lexical)
+}
+#endif
