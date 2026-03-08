@@ -6,6 +6,9 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Fixed
+- Fixed Linux CI build failure by adding missing `SwiftSOAPCompatibility` imports in `XMLTreeParser+Logic.swift` and `XMLTreeWriter+Logic.swift`, ensuring `libxml2` constants are available on Linux.
+
 ### Added (Epic 6B closure — XML-6.10C/D, XML-6.11A/B/C/D/E)
 
 #### XML-6.10C — Hybrid semantic validation profiles
