@@ -50,11 +50,14 @@ type_body_length:
 
 file_length:
   warning: 500
-  # XMLDecoder+Codable.swift (804 lines) hosts 4 interdependent Codable container
-  # types (_XMLTreeDecoder, _XMLKeyedDecodingContainer, _XMLUnkeyedDecodingContainer,
+  # ignore_comment_only_lines: true — comment-only lines are excluded from the count.
+  # XMLDecoder+Codable.swift is the largest file: ~745 effective (non-comment) lines.
+  # It hosts 4 interdependent Codable container types (_XMLTreeDecoder,
+  # _XMLKeyedDecodingContainer, _XMLUnkeyedDecodingContainer,
   # _XMLSingleValueDecodingContainer) that cross-reference private state; splitting
-  # them across files would require exposing internal state or duplicating it.
-  error: 850
+  # them would require exposing internal state or duplicating it.
+  error: 800
+  ignore_comment_only_lines: true
 
 cyclomatic_complexity:
   warning: 10

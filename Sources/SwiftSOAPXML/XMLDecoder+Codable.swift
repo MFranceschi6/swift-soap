@@ -225,7 +225,7 @@ final class _XMLTreeDecoder: Decoder {
         }
 
         if type == URL.self {
-            #if swift(<6.0)
+            #if !canImport(Darwin) && swift(<6.0)
             guard let parsed = _xmlParityDecodeURL(lexical) else {
                 throw XMLParsingError.parseFailed(
                     message: "[XML6_5C_URL_PARSE_FAILED] Unable to parse URL from '\(lexical)' at path '\(renderCodingPath(codingPath))'."
@@ -824,12 +824,12 @@ struct _XMLSingleValueDecodingContainer: SingleValueDecodingContainer {
     }
 }
 
-#if swift(<6.0)
-/// Internal hotfix to ensure Swift 5 parity with Swift 6 URL(string:) behavior.
-/// 1. Manually rejects malformed brackets (Swift 5 incorrectly accepts them).
-/// 2. Auto-encodes spaces (mimics Swift 6 behavior).
-@usableFromInline
-@inlinable
+#if !canImport(Darwin) && swift(<6.0)
+/// Hotfix for Linux swift-corelibs-foundation (pre-Swift 6 Foundation rewrite).
+///
+/// The old Linux URL parser may accept unbalanced IPv6 brackets instead of returning nil,
+/// and does not auto-percent-encode spaces (both handled correctly by Swift 6 swift-foundation).
+/// Normalises both behaviours so Linux Swift 5 decoding matches macOS and Linux Swift 6+.
 internal func _xmlParityDecodeURL(_ lexical: String) -> URL? {
     var balance = 0
     for char in lexical {
@@ -847,4 +847,4 @@ internal func _xmlParityDecodeURL(_ lexical: String) -> URL? {
 
     return URL(string: lexical)
 }
-#endif
+#endif // !canImport(Darwin) && swift(<6.0)
