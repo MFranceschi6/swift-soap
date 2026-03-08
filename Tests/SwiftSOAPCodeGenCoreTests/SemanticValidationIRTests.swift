@@ -3,8 +3,6 @@ import SwiftSOAPCodeGenCore
 import SwiftSOAPWSDL
 import XCTest
 
-// swiftlint:disable function_body_length
-
 /// Tests for XML-6.10C/D: enumeration IR, facet constraints, CodingKeys emission, required fix.
 final class SemanticValidationIRTests: XCTestCase {
 
@@ -297,4 +295,3 @@ final class SemanticValidationIRTests: XCTestCase {
         return try CodeGenerationIRBuilder().build(from: definition, configuration: config)
     }
 }
-// swiftlint:enable function_body_length

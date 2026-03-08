@@ -3,7 +3,7 @@ set -euo pipefail
 setopt typesetsilent
 
 ROOT_DIR=$(cd "$(dirname "$0")/.." && pwd)
-REPORT_ROOT="$ROOT_DIR/.cursor/report/local-matrix"
+REPORT_ROOT="${LOCAL_MATRIX_REPORT_ROOT:-$ROOT_DIR/.claude/report/local-matrix}"
 RUN_DATE=$(date +%F)
 RUN_ID=$(date +%Y%m%d-%H%M%S)
 RUN_DIR="$REPORT_ROOT/$RUN_DATE/$RUN_ID"
@@ -32,6 +32,7 @@ Usage:
 Environment:
   SWIFTLY_BIN     Path to swiftly binary (default: ~/.swiftly/bin/swiftly)
   SWIFTLY_CONFIG  Path to swiftly config.json (default: ~/.swiftly/config.json)
+  LOCAL_MATRIX_REPORT_ROOT  Report output root (default: .claude/report/local-matrix)
 USAGE
 }
 

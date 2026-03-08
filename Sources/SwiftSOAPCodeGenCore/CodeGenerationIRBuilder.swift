@@ -353,14 +353,14 @@ public struct CodeGenerationIRBuilder {
     private func facetConstraints(from facets: WSDLDefinition.Facets?) -> [FacetConstraintIR] {
         guard let facets else { return [] }
         var result: [FacetConstraintIR] = []
-        if let v = facets.pattern { result.append(FacetConstraintIR(kind: .pattern, value: v)) }
-        if let v = facets.minLength { result.append(FacetConstraintIR(kind: .minLength, value: String(v))) }
-        if let v = facets.maxLength { result.append(FacetConstraintIR(kind: .maxLength, value: String(v))) }
-        if let v = facets.length { result.append(FacetConstraintIR(kind: .length, value: String(v))) }
-        if let v = facets.minInclusive { result.append(FacetConstraintIR(kind: .minInclusive, value: v)) }
-        if let v = facets.maxInclusive { result.append(FacetConstraintIR(kind: .maxInclusive, value: v)) }
-        if let v = facets.totalDigits { result.append(FacetConstraintIR(kind: .totalDigits, value: String(v))) }
-        if let v = facets.fractionDigits { result.append(FacetConstraintIR(kind: .fractionDigits, value: String(v))) }
+        if let value = facets.pattern { result.append(FacetConstraintIR(kind: .pattern, value: value)) }
+        if let value = facets.minLength { result.append(FacetConstraintIR(kind: .minLength, value: String(value))) }
+        if let value = facets.maxLength { result.append(FacetConstraintIR(kind: .maxLength, value: String(value))) }
+        if let value = facets.length { result.append(FacetConstraintIR(kind: .length, value: String(value))) }
+        if let value = facets.minInclusive { result.append(FacetConstraintIR(kind: .minInclusive, value: value)) }
+        if let value = facets.maxInclusive { result.append(FacetConstraintIR(kind: .maxInclusive, value: value)) }
+        if let value = facets.totalDigits { result.append(FacetConstraintIR(kind: .totalDigits, value: String(value))) }
+        if let value = facets.fractionDigits { result.append(FacetConstraintIR(kind: .fractionDigits, value: String(value))) }
         return result
     }
 

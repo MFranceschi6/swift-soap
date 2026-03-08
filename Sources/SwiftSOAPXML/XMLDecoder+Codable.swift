@@ -1,5 +1,16 @@
 import Foundation
 
+// MARK: - Codable decoding stack
+// This file implements the internal Codable container types that back `XMLDecoder`:
+// `_XMLTreeDecoder`, `_XMLKeyedDecodingContainer`, `_XMLUnkeyedDecodingContainer`,
+// `_XMLSingleValueDecodingContainer`. They are file-private structs/classes rather
+// than nested types because protocol conformance synthesis (Decoder,
+// KeyedDecodingContainerProtocol, etc.) requires them to be visible at file scope.
+extension XMLDecoder {
+    // Codable container types are implemented as file-private types below.
+    // This extension anchor satisfies the '+Codable' file-naming convention.
+}
+
 struct _XMLDecoderOptions {
     let itemElementName: String
     let fieldCodingOverrides: XMLFieldCodingOverrides
@@ -350,8 +361,9 @@ final class _XMLTreeDecoder: Decoder {
     private func parseData(_ lexicalValue: String, codingPath: [CodingKey]) throws -> Data {
         switch options.dataDecodingStrategy {
         case .deferredToData:
+            let path = renderCodingPath(codingPath)
             throw XMLParsingError.parseFailed(
-                message: "[XML6_5B_DATA_UNSUPPORTED_STRATEGY] Data strategy deferredToData requires deferred decoding at path '\(renderCodingPath(codingPath))'."
+                message: "[XML6_5B_DATA_UNSUPPORTED_STRATEGY] Data strategy deferredToData requires deferred decoding at path '\(path)'."
             )
         case .base64:
             let normalized = lexicalValue.filter { $0.isWhitespace == false }

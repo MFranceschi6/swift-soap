@@ -2,7 +2,6 @@ import Foundation
 import SwiftSOAPCodeGenCore
 import XCTest
 
-// swiftlint:disable file_length
 // swiftlint:disable:next type_body_length
 final class GeneratedRuntimeIntegrationTests: XCTestCase {
     private struct FixtureProcessFailure: LocalizedError {
@@ -525,4 +524,3 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
         }
     }
 }
-// swiftlint:enable file_length

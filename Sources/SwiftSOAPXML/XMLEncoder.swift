@@ -153,7 +153,14 @@ public struct XMLEncoder: Sendable {
             node: rootNode,
             fieldNodeKinds: _xmlFieldNodeKinds(for: T.self)
         )
-        try value.encode(to: encoder)
+        // Intercept Foundation scalar types (URL, UUID, Decimal, Date, Data, …) whose
+        // Codable conformances use keyed containers internally, bypassing our scalar path.
+        // Box them directly as root element text content, mirroring the decoder intercept.
+        if let scalar = try encoder.boxedScalar(value, codingPath: [], localName: rootElementName) {
+            rootNode.appendText(scalar)
+        } else {
+            try value.encode(to: encoder)
+        }
         return XMLTreeDocument(root: rootNode.makeElement())
     }
 

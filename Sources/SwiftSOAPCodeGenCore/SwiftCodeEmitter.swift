@@ -1,9 +1,6 @@
 import Foundation
+// swiftlint:disable:next blanket_disable_command
 // swiftlint:disable line_length
-
-public protocol SwiftSourceEmitter {
-    func emit(ir: SOAPCodeGenerationIR, syntaxProfile: CodeGenerationSyntaxProfile) -> String
-}
 
 public struct SwiftCodeEmitter: SwiftSourceEmitter {
     public init() {}
@@ -132,7 +129,7 @@ public struct SwiftCodeEmitter: SwiftSourceEmitter {
         var lines: [String] = []
         let orderedFields = fields.sorted { lhs, rhs in
             switch (lhs.xmlOrder, rhs.xmlOrder) {
-            case let (l?, r?): return l < r
+            case let (lhsOrder?, rhsOrder?): return lhsOrder < rhsOrder
             default: return false
             }
         }

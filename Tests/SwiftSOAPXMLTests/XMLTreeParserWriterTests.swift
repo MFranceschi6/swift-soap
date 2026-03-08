@@ -229,4 +229,116 @@ final class XMLTreeParserWriterTests: XCTestCase {
         }
         XCTAssertTrue(blankElement.children.isEmpty)
     }
+
+    // MARK: - Coverage: writer whitespace policies
+
+    func test_writer_omitWhitespaceOnly_skipsWhitespaceOnlyTextNodes() throws {
+        let treeDocument = XMLTreeDocument(
+            root: XMLTreeElement(
+                name: XMLQualifiedName(localName: "Root"),
+                children: [
+                    .text("   \n   "),          // whitespace-only → must be omitted
+                    .element(XMLTreeElement(
+                        name: XMLQualifiedName(localName: "Item"),
+                        children: [.text("hello")]
+                    )),
+                    .text("  ")                  // whitespace-only → must be omitted
+                ]
+            )
+        )
+
+        let writer = XMLTreeWriter(configuration: .init(whitespaceTextNodePolicy: .omitWhitespaceOnly))
+        let parser = XMLTreeParser(configuration: .init(whitespaceTextNodePolicy: .preserve))
+
+        let data = try writer.writeData(treeDocument)
+        let parsed = try parser.parse(data: data)
+
+        XCTAssertEqual(parsed.root.children.count, 1)
+        if case .element(let item) = parsed.root.children[0] {
+            XCTAssertEqual(item.name.localName, "Item")
+        } else {
+            XCTFail("Expected element child.")
+        }
+    }
+
+    func test_writer_omitWhitespaceOnly_nonWhitespaceTextIsPreserved() throws {
+        let treeDocument = XMLTreeDocument(
+            root: XMLTreeElement(
+                name: XMLQualifiedName(localName: "Root"),
+                children: [.text("  actual content  ")]
+            )
+        )
+
+        let writer = XMLTreeWriter(configuration: .init(whitespaceTextNodePolicy: .omitWhitespaceOnly))
+        let parser = XMLTreeParser(configuration: .init(whitespaceTextNodePolicy: .preserve))
+
+        let data = try writer.writeData(treeDocument)
+        let parsed = try parser.parse(data: data)
+        XCTAssertEqual(parsed.root.children, [.text("  actual content  ")])
+    }
+
+    func test_writer_trim_trimsBothSidesOfTextNodes() throws {
+        let treeDocument = XMLTreeDocument(
+            root: XMLTreeElement(
+                name: XMLQualifiedName(localName: "Root"),
+                children: [.text("  trimmed value  ")]
+            )
+        )
+
+        let writer = XMLTreeWriter(configuration: .init(whitespaceTextNodePolicy: .trim))
+        let parser = XMLTreeParser(configuration: .init(whitespaceTextNodePolicy: .preserve))
+
+        let data = try writer.writeData(treeDocument)
+        let parsed = try parser.parse(data: data)
+        XCTAssertEqual(parsed.root.children, [.text("trimmed value")])
+    }
+
+    // MARK: - Coverage: writer namespaced attributes
+
+    func test_writer_namespacedAttribute_withPrefixAndDeclaredNamespace_writesCorrectly() throws {
+        let treeDocument = XMLTreeDocument(
+            root: XMLTreeElement(
+                name: XMLQualifiedName(localName: "Root"),
+                attributes: [
+                    XMLTreeAttribute(
+                        name: XMLQualifiedName(localName: "id", namespaceURI: "urn:attrs", prefix: "a"),
+                        value: "123"
+                    )
+                ],
+                namespaceDeclarations: [XMLNamespaceDeclaration(prefix: "a", uri: "urn:attrs")]
+            )
+        )
+
+        let writer = XMLTreeWriter(configuration: .init(namespaceValidationMode: .synthesizeMissingDeclarations))
+        let parser = XMLTreeParser()
+
+        let data = try writer.writeData(treeDocument)
+        let parsed = try parser.parse(data: data)
+
+        XCTAssertEqual(parsed.root.attributes.first?.value, "123")
+        XCTAssertEqual(parsed.root.attributes.first?.name.localName, "id")
+    }
+
+    func test_writer_namespacedAttribute_withoutPrefix_synthesizesNamespace() throws {
+        let treeDocument = XMLTreeDocument(
+            root: XMLTreeElement(
+                name: XMLQualifiedName(localName: "Root"),
+                attributes: [
+                    XMLTreeAttribute(
+                        name: XMLQualifiedName(localName: "id", namespaceURI: "urn:attrs"),
+                        value: "456"
+                    )
+                ]
+            )
+        )
+
+        let writer = XMLTreeWriter(configuration: .init(namespaceValidationMode: .synthesizeMissingDeclarations))
+        let parser = XMLTreeParser()
+
+        let data = try writer.writeData(treeDocument)
+        let parsed = try parser.parse(data: data)
+
+        XCTAssertEqual(parsed.root.attributes.first?.value, "456")
+        XCTAssertEqual(parsed.root.attributes.first?.name.localName, "id")
+    }
 }

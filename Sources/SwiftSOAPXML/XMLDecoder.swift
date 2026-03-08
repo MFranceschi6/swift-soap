@@ -153,6 +153,18 @@ public struct XMLDecoder: Sendable {
             node: tree.root,
             fieldNodeKinds: _xmlFieldNodeKinds(for: T.self)
         )
+        // Intercept Foundation scalar types (Decimal, URL, UUID, Date, Data, …) whose
+        // Codable conformances call container(keyedBy:) or decode(String.self) internally,
+        // bypassing our scalar path. This mirrors the JSONDecoder approach of special-casing
+        // Foundation types via a direct unbox call instead of relying on T.init(from:).
+        if let scalar: T = try decoder.decodeScalar(type, from: tree.root, codingPath: []) {
+            return scalar
+        }
+        if decoder.isKnownScalarType(type) {
+            throw XMLParsingError.parseFailed(
+                message: "[XML6_5_SCALAR_PARSE_FAILED] Unable to decode scalar at root element '\(tree.root.name.localName)'."
+            )
+        }
         return try T(from: decoder)
     }
 
