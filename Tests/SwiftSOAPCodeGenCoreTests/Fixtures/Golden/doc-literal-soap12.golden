@@ -31,9 +31,9 @@ public struct FaultMessagePayload: SOAPBodyPayload, Equatable {
 }
 
 public struct MatrixPayload: Codable, Sendable, Equatable {
-    public var value: String?
+    public var value: String
 
-    public init(value: String?) {
+    public init(value: String) {
         self.value = value
     }
 }

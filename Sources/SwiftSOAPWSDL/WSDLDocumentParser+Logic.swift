@@ -331,11 +331,51 @@ extension WSDLDocumentParser {
             .attribute(named: "value")
             .flatMap(normalized)
 
+        let facets: WSDLDefinition.Facets?
+        if let restrictionNode {
+            let minLength = restrictionNode.children()
+                .first(where: { $0.name == "minLength" })?
+                .attribute(named: "value").flatMap { Int($0) }
+            let maxLength = restrictionNode.children()
+                .first(where: { $0.name == "maxLength" })?
+                .attribute(named: "value").flatMap { Int($0) }
+            let length = restrictionNode.children()
+                .first(where: { $0.name == "length" })?
+                .attribute(named: "value").flatMap { Int($0) }
+            let minInclusive = restrictionNode.children()
+                .first(where: { $0.name == "minInclusive" })?
+                .attribute(named: "value").flatMap(normalized)
+            let maxInclusive = restrictionNode.children()
+                .first(where: { $0.name == "maxInclusive" })?
+                .attribute(named: "value").flatMap(normalized)
+            let totalDigits = restrictionNode.children()
+                .first(where: { $0.name == "totalDigits" })?
+                .attribute(named: "value").flatMap { Int($0) }
+            let fractionDigits = restrictionNode.children()
+                .first(where: { $0.name == "fractionDigits" })?
+                .attribute(named: "value").flatMap { Int($0) }
+            let built = WSDLDefinition.Facets(
+                enumeration: enumerationValues,
+                pattern: pattern,
+                minLength: minLength,
+                maxLength: maxLength,
+                length: length,
+                minInclusive: minInclusive,
+                maxInclusive: maxInclusive,
+                totalDigits: totalDigits,
+                fractionDigits: fractionDigits
+            )
+            facets = built.isEmpty ? nil : built
+        } else {
+            facets = nil
+        }
+
         return WSDLDefinition.SimpleType(
             name: name,
             baseQName: baseQName,
             enumerationValues: enumerationValues,
-            pattern: pattern
+            pattern: pattern,
+            facets: facets
         )
     }
 

@@ -1,0 +1,17 @@
+# .swiftlint.yml for Tests/**
+# Relaxed thresholds for test targets: fixtures, parameterized tables,
+# loopback stubs, and long test functions are expected here.
+
+parent_config: ../.swiftlint.yml
+
+function_body_length:
+  warning: 120
+  error: 200
+
+type_body_length:
+  warning: 450
+  error: 600
+
+file_length:
+  warning: 700
+  error: 1200

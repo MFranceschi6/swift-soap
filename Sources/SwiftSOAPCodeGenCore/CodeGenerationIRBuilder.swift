@@ -34,7 +34,8 @@ public struct CodeGenerationIRBuilder {
             generationScope: configuration.generationScope,
             runtimeTargets: configuration.runtimeTargets,
             generatedTypes: generatedTypes,
-            services: services
+            services: services,
+            validationProfile: configuration.validationProfile
         )
     }
 
@@ -69,27 +70,38 @@ public struct CodeGenerationIRBuilder {
                 let schemaSwiftTypeName = sanitizeTypeName(complexType.name)
                 try ensureUniqueSymbol(schemaSwiftTypeName, generatedTypeNames: &generatedTypeNames)
 
-                let sequenceFields = complexType.sequence.map { element in
-                    GeneratedTypeFieldIR(
-                        name: sanitizePropertyName(element.name),
+                let sequenceFields = complexType.sequence.enumerated().map { (index, element) in
+                    let swiftName = sanitizePropertyName(element.name)
+                    let xmlNameValue = element.name != swiftName ? element.name : nil
+                    return GeneratedTypeFieldIR(
+                        name: swiftName,
                         swiftTypeName: swiftTypeName(forQNameLocalName: element.typeQName?.localName),
-                        isOptional: element.minOccurs == nil || element.minOccurs == 0
+                        isOptional: element.minOccurs == 0,
+                        xmlName: xmlNameValue,
+                        xmlOrder: index
                     )
                 }
 
-                let choiceFields = complexType.choice.map { element in
-                    GeneratedTypeFieldIR(
-                        name: sanitizePropertyName(element.name),
+                let choiceFields = complexType.choice.enumerated().map { (index, element) in
+                    let swiftName = sanitizePropertyName(element.name)
+                    let xmlNameValue = element.name != swiftName ? element.name : nil
+                    return GeneratedTypeFieldIR(
+                        name: swiftName,
                         swiftTypeName: swiftTypeName(forQNameLocalName: element.typeQName?.localName),
-                        isOptional: true
+                        isOptional: true,
+                        xmlName: xmlNameValue,
+                        xmlOrder: sequenceFields.count + index
                     )
                 }
 
                 let attributeFields = complexType.attributes.map { attribute in
-                    GeneratedTypeFieldIR(
-                        name: sanitizePropertyName(attribute.name),
+                    let swiftName = sanitizePropertyName(attribute.name)
+                    let xmlNameValue = attribute.name != swiftName ? attribute.name : nil
+                    return GeneratedTypeFieldIR(
+                        name: swiftName,
                         swiftTypeName: swiftTypeName(forQNameLocalName: attribute.typeQName?.localName),
-                        isOptional: attribute.use != "required"
+                        isOptional: attribute.use != "required",
+                        xmlName: xmlNameValue
                     )
                 }
 
@@ -106,16 +118,34 @@ public struct CodeGenerationIRBuilder {
                 let schemaSwiftTypeName = sanitizeTypeName(simpleType.name)
                 try ensureUniqueSymbol(schemaSwiftTypeName, generatedTypeNames: &generatedTypeNames)
 
-                let fieldTypeName = swiftTypeName(forQNameLocalName: simpleType.baseQName?.localName)
-                let fields = [GeneratedTypeFieldIR(name: "rawValue", swiftTypeName: fieldTypeName, isOptional: false)]
-
-                generatedTypes.append(
-                    GeneratedTypeIR(
-                        swiftTypeName: schemaSwiftTypeName,
-                        kind: .schemaModel,
-                        fields: fields
+                if !simpleType.enumerationValues.isEmpty {
+                    generatedTypes.append(
+                        GeneratedTypeIR(
+                            swiftTypeName: schemaSwiftTypeName,
+                            kind: .enumeration,
+                            fields: [],
+                            enumerationCases: simpleType.enumerationValues
+                        )
                     )
-                )
+                } else {
+                    let fieldTypeName = swiftTypeName(forQNameLocalName: simpleType.baseQName?.localName)
+                    let constraints = facetConstraints(from: simpleType.facets)
+                    let fields = [
+                        GeneratedTypeFieldIR(
+                            name: "rawValue",
+                            swiftTypeName: fieldTypeName,
+                            isOptional: false,
+                            constraints: constraints
+                        )
+                    ]
+                    generatedTypes.append(
+                        GeneratedTypeIR(
+                            swiftTypeName: schemaSwiftTypeName,
+                            kind: .schemaModel,
+                            fields: fields
+                        )
+                    )
+                }
             }
         }
 
@@ -318,6 +348,20 @@ public struct CodeGenerationIRBuilder {
         default:
             return sanitizeTypeName(localName)
         }
+    }
+
+    private func facetConstraints(from facets: WSDLDefinition.Facets?) -> [FacetConstraintIR] {
+        guard let facets else { return [] }
+        var result: [FacetConstraintIR] = []
+        if let v = facets.pattern { result.append(FacetConstraintIR(kind: .pattern, value: v)) }
+        if let v = facets.minLength { result.append(FacetConstraintIR(kind: .minLength, value: String(v))) }
+        if let v = facets.maxLength { result.append(FacetConstraintIR(kind: .maxLength, value: String(v))) }
+        if let v = facets.length { result.append(FacetConstraintIR(kind: .length, value: String(v))) }
+        if let v = facets.minInclusive { result.append(FacetConstraintIR(kind: .minInclusive, value: v)) }
+        if let v = facets.maxInclusive { result.append(FacetConstraintIR(kind: .maxInclusive, value: v)) }
+        if let v = facets.totalDigits { result.append(FacetConstraintIR(kind: .totalDigits, value: String(v))) }
+        if let v = facets.fractionDigits { result.append(FacetConstraintIR(kind: .fractionDigits, value: String(v))) }
+        return result
     }
 
     private func ensureUniqueSymbol(_ symbol: String, generatedTypeNames: inout Set<String>) throws {

@@ -319,4 +319,67 @@ final class WSDLDocumentParserTests: XCTestCase {
             }
         }
     }
+
+    func test_parse_simpleTypeWithXSDFacets_populatesFacets() throws {
+        let wsdl = """
+        <wsdl:definitions
+            xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            targetNamespace="urn:test">
+          <wsdl:types>
+            <xsd:schema targetNamespace="urn:test">
+              <xsd:simpleType name="PostalCode">
+                <xsd:restriction base="xsd:string">
+                  <xsd:minLength value="4"/>
+                  <xsd:maxLength value="6"/>
+                  <xsd:pattern value="[0-9]+"/>
+                </xsd:restriction>
+              </xsd:simpleType>
+            </xsd:schema>
+          </wsdl:types>
+        </wsdl:definitions>
+        """
+
+        let definition = try WSDLDocumentParser().parse(data: Data(wsdl.utf8))
+        let schema = try XCTUnwrap(definition.types.schemas.first)
+        let simpleType = try XCTUnwrap(schema.simpleTypes.first)
+
+        XCTAssertEqual(simpleType.name, "PostalCode")
+        let facets = try XCTUnwrap(simpleType.facets)
+        XCTAssertEqual(facets.minLength, 4)
+        XCTAssertEqual(facets.maxLength, 6)
+        XCTAssertEqual(facets.pattern, "[0-9]+")
+        XCTAssertNil(facets.minInclusive)
+        XCTAssertNil(facets.maxInclusive)
+    }
+
+    func test_parse_simpleTypeWithEnumerationFacets_populatesFacetsAndEnumerationValues() throws {
+        let wsdl = """
+        <wsdl:definitions
+            xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            targetNamespace="urn:test">
+          <wsdl:types>
+            <xsd:schema targetNamespace="urn:test">
+              <xsd:simpleType name="Priority">
+                <xsd:restriction base="xsd:string">
+                  <xsd:enumeration value="low"/>
+                  <xsd:enumeration value="medium"/>
+                  <xsd:enumeration value="high"/>
+                </xsd:restriction>
+              </xsd:simpleType>
+            </xsd:schema>
+          </wsdl:types>
+        </wsdl:definitions>
+        """
+
+        let definition = try WSDLDocumentParser().parse(data: Data(wsdl.utf8))
+        let schema = try XCTUnwrap(definition.types.schemas.first)
+        let simpleType = try XCTUnwrap(schema.simpleTypes.first)
+
+        XCTAssertEqual(simpleType.name, "Priority")
+        XCTAssertEqual(simpleType.enumerationValues, ["low", "medium", "high"])
+        let facets = try XCTUnwrap(simpleType.facets)
+        XCTAssertEqual(facets.enumeration, ["low", "medium", "high"])
+    }
 }

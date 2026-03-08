@@ -178,6 +178,13 @@ public enum CodeGenSyntaxFeatureRegistry {
     }
 }
 
+public enum ValidationProfile: String, Codable, Sendable, CaseIterable {
+    /// Emits `validate() throws` for all facet constraints (pattern, length, range).
+    case strict
+    /// Skips runtime validation method generation; relies on type system only.
+    case lenient
+}
+
 public struct CodeGenConfiguration: Codable, Sendable, Equatable {
     public var wsdlPath: String
     public var moduleName: String
@@ -188,6 +195,7 @@ public struct CodeGenConfiguration: Codable, Sendable, Equatable {
     public var generationScope: Set<CodeGenerationScopeOption>
     public var targetSwiftVersion: SwiftLanguageVersion
     public var syntaxFeatures: [String: Bool]
+    public var validationProfile: ValidationProfile
 
     public init(
         wsdlPath: String,
@@ -198,7 +206,8 @@ public struct CodeGenConfiguration: Codable, Sendable, Equatable {
         runtimeTargets: Set<CodeGenerationRuntimeTargetOption> = [.async],
         generationScope: Set<CodeGenerationScopeOption> = [.client],
         targetSwiftVersion: SwiftLanguageVersion,
-        syntaxFeatures: [String: Bool] = [:]
+        syntaxFeatures: [String: Bool] = [:],
+        validationProfile: ValidationProfile = .strict
     ) {
         self.wsdlPath = wsdlPath
         self.moduleName = moduleName
@@ -209,6 +218,21 @@ public struct CodeGenConfiguration: Codable, Sendable, Equatable {
         self.generationScope = generationScope
         self.targetSwiftVersion = targetSwiftVersion
         self.syntaxFeatures = syntaxFeatures
+        self.validationProfile = validationProfile
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        wsdlPath = try container.decode(String.self, forKey: .wsdlPath)
+        moduleName = try container.decode(String.self, forKey: .moduleName)
+        outputMode = try container.decodeIfPresent(CodeGenerationOutputMode.self, forKey: .outputMode) ?? .build
+        buildOutputDirectory = try container.decodeIfPresent(String.self, forKey: .buildOutputDirectory) ?? ".build/swift-soap-codegen"
+        exportOutputDirectory = try container.decodeIfPresent(String.self, forKey: .exportOutputDirectory) ?? "Sources/Generated"
+        runtimeTargets = try container.decodeIfPresent(Set<CodeGenerationRuntimeTargetOption>.self, forKey: .runtimeTargets) ?? [.async]
+        generationScope = try container.decodeIfPresent(Set<CodeGenerationScopeOption>.self, forKey: .generationScope) ?? [.client]
+        targetSwiftVersion = try container.decode(SwiftLanguageVersion.self, forKey: .targetSwiftVersion)
+        syntaxFeatures = try container.decodeIfPresent([String: Bool].self, forKey: .syntaxFeatures) ?? [:]
+        validationProfile = try container.decodeIfPresent(ValidationProfile.self, forKey: .validationProfile) ?? .strict
     }
 }
 
@@ -222,6 +246,7 @@ public struct CodeGenConfigurationOverrides: Sendable, Equatable {
     public var generationScope: Set<CodeGenerationScopeOption>?
     public var targetSwiftVersion: SwiftLanguageVersion?
     public var syntaxFeatures: [String: Bool]
+    public var validationProfile: ValidationProfile?
 
     public init() {
         syntaxFeatures = [:]
@@ -256,6 +281,9 @@ public extension CodeGenConfiguration {
         }
         for (featureName, enabled) in overrides.syntaxFeatures {
             syntaxFeatures[featureName] = enabled
+        }
+        if let validationProfile = overrides.validationProfile {
+            self.validationProfile = validationProfile
         }
     }
 

@@ -15,6 +15,7 @@ let package = Package(
         .library(name: "SwiftSOAPServerAsync", targets: ["SwiftSOAPServerAsync"]),
         .library(name: "SwiftSOAPClientNIO", targets: ["SwiftSOAPClientNIO"]),
         .library(name: "SwiftSOAPServerNIO", targets: ["SwiftSOAPServerNIO"]),
+        .library(name: "SwiftSOAPXMLTestSupport", targets: ["SwiftSOAPXMLTestSupport"]),
         .plugin(name: "SwiftSOAPCodeGenPlugin", targets: ["SwiftSOAPCodeGenPlugin"])
     ],
     dependencies: [

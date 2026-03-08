@@ -1,29 +1,63 @@
 import Foundation
 
+/// Decodes XML trees or raw XML data into `Decodable` Swift types.
+///
+/// `XMLDecoder` is the primary entry point for deserialising XML into Swift model types.
+/// It uses the `Codable` machinery internally and supports configurable strategies
+/// for dates and binary data.
+///
+/// ```swift
+/// let decoder = XMLDecoder()
+/// let value = try decoder.decode(MyType.self, from: xmlData)
+/// ```
+///
+/// The decoder is `Sendable` and can be shared across concurrent contexts without
+/// additional synchronisation.
 public struct XMLDecoder: Sendable {
+    /// Controls how XML text content is decoded into `Date` values.
     public enum DateDecodingStrategy: Sendable {
+        /// Delegate to `Date`'s default `Decodable` behaviour (expects a Double).
         case deferredToDate
+        /// Decode a floating-point string as seconds since Unix epoch.
         case secondsSince1970
+        /// Decode a floating-point string as milliseconds since Unix epoch.
         case millisecondsSince1970
+        /// Decode XSD `dateTime` format (`YYYY-MM-DDThh:mm:ssZ`). Part of the default chain.
         case xsdDateTimeISO8601
+        /// Decode ISO 8601 format using `ISO8601DateFormatter`.
         case iso8601
+        /// Decode using a custom `XMLDateFormatterDescriptor`.
         case formatter(XMLDateFormatterDescriptor)
+        /// Try each strategy in turn; throw if all fail. Part of the default chain.
         case multiple([DateDecodingStrategy])
+        /// Decode using a custom closure.
         case custom(XMLDateDecodingClosure)
     }
 
+    /// Controls how XML text content is decoded into `Data` values.
     public enum DataDecodingStrategy: Sendable, Hashable {
+        /// Delegate to `Data`'s default `Decodable` behaviour.
         case deferredToData
+        /// Decode Base-64 encoded text.  This is the default.
         case base64
+        /// Decode lowercase hexadecimal text.
         case hex
     }
 
+    /// Decoding configuration applied to every decode call on this instance.
     public struct Configuration: Sendable {
+        /// Override the expected root element name.
+        /// When `nil`, the decoder derives the name from `@XMLRootNode` or skips validation.
         public let rootElementName: String?
+        /// Element name expected for items in collection types.  Defaults to `"item"`.
         public let itemElementName: String
+        /// Field-level coding overrides (e.g. attribute vs element, custom element names).
         public let fieldCodingOverrides: XMLFieldCodingOverrides
+        /// Strategy for decoding `Date` values.  Defaults to a chain of XSD, seconds, milliseconds.
         public let dateDecodingStrategy: DateDecodingStrategy
+        /// Strategy for decoding `Data` values.  Defaults to `.base64`.
         public let dataDecodingStrategy: DataDecodingStrategy
+        /// Configuration forwarded to the underlying `XMLTreeParser`.
         public let parserConfiguration: XMLTreeParser.Configuration
 
         public init(
@@ -45,13 +79,24 @@ public struct XMLDecoder: Sendable {
         }
     }
 
+    /// The configuration used by this decoder.
     public let configuration: Configuration
 
+    /// Creates a new decoder with the supplied configuration.
+    /// - Parameter configuration: Decoding options.  Defaults to `Configuration()`.
     public init(configuration: Configuration = Configuration()) {
         self.configuration = configuration
     }
 
     #if swift(>=6.0)
+    /// Decodes `type` from a pre-parsed `XMLTreeDocument`.
+    ///
+    /// Use this when the XML tree is already available (e.g. from the SOAP wire codec).
+    /// - Parameters:
+    ///   - type: The `Decodable` type to decode into.
+    ///   - tree: The source document tree.
+    /// - Returns: A decoded instance of `type`.
+    /// - Throws: `XMLParsingError` on decoding failure or root element mismatch.
     public func decodeTree<T: Decodable>(_ type: T.Type, from tree: XMLTreeDocument) throws(XMLParsingError) -> T {
         do {
             return try decodeTreeImpl(type, from: tree)
@@ -62,6 +107,14 @@ public struct XMLDecoder: Sendable {
         }
     }
 
+    /// Decodes `type` from raw XML `Data`.
+    ///
+    /// Parses the data into an `XMLTreeDocument` using `parserConfiguration` and then decodes.
+    /// - Parameters:
+    ///   - type: The `Decodable` type to decode into.
+    ///   - data: Raw UTF-8 encoded XML data.
+    /// - Returns: A decoded instance of `type`.
+    /// - Throws: `XMLParsingError` on parse or decode failure.
     public func decode<T: Decodable>(_ type: T.Type, from data: Data) throws(XMLParsingError) -> T {
         do {
             let parser = XMLTreeParser(configuration: configuration.parserConfiguration)
