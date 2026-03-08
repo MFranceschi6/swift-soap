@@ -135,4 +135,98 @@ final class XMLTreeParserWriterTests: XCTestCase {
         XCTAssertEqual(parsedTree.root.name.localName, "Root")
         XCTAssertEqual(parsedTree.root.children, [.text("value")])
     }
+
+    func test_writer_prettyPrinted_outputsReadableFormatting() throws {
+        let treeDocument = XMLTreeDocument(
+            root: XMLTreeElement(
+                name: XMLQualifiedName(localName: "Root"),
+                children: [
+                    .element(XMLTreeElement(name: XMLQualifiedName(localName: "Child"), children: [.text("value")]))
+                ]
+            )
+        )
+
+        let prettyWriter = XMLTreeWriter(configuration: .init(prettyPrinted: true))
+        let compactWriter = XMLTreeWriter(configuration: .init(prettyPrinted: false))
+
+        let prettyXML = try prettyWriter.writeData(treeDocument)
+        let compactXML = try compactWriter.writeData(treeDocument)
+
+        let prettyXMLString = String(bytes: prettyXML, encoding: .utf8)
+        XCTAssertTrue(prettyXMLString?.contains("\n") == true)
+        XCTAssertTrue(prettyXML.count >= compactXML.count)
+    }
+
+    func test_writer_deterministicSerialization_stableSortsAttributesAndNamespaces() throws {
+        let treeDocument = XMLTreeDocument(
+            root: XMLTreeElement(
+                name: XMLQualifiedName(localName: "Root"),
+                attributes: [
+                    XMLTreeAttribute(name: XMLQualifiedName(localName: "z"), value: "1"),
+                    XMLTreeAttribute(name: XMLQualifiedName(localName: "a"), value: "2"),
+                    XMLTreeAttribute(name: XMLQualifiedName(localName: "m"), value: "3")
+                ],
+                namespaceDeclarations: [
+                    XMLNamespaceDeclaration(prefix: "z", uri: "urn:z"),
+                    XMLNamespaceDeclaration(prefix: nil, uri: "urn:default"),
+                    XMLNamespaceDeclaration(prefix: "a", uri: "urn:a")
+                ]
+            )
+        )
+
+        let writer = XMLTreeWriter(
+            configuration: .init(
+                deterministicSerializationMode: .stable
+            )
+        )
+        let parser = XMLTreeParser()
+
+        let data = try writer.writeData(treeDocument)
+        let parsed = try parser.parse(data: data)
+
+        XCTAssertEqual(parsed.root.attributes.map(\.name.localName), ["a", "m", "z"])
+        XCTAssertEqual(parsed.root.namespaceDeclarations.map { $0.prefix ?? "" }, ["", "a", "z"])
+    }
+
+    func test_writer_whitespaceTextPolicy_normalizeAndTrim_normalizesTextNodes() throws {
+        let treeDocument = XMLTreeDocument(
+            root: XMLTreeElement(
+                name: XMLQualifiedName(localName: "Root"),
+                children: [.text("  hello \n  world   ")]
+            )
+        )
+
+        let writer = XMLTreeWriter(
+            configuration: .init(
+                whitespaceTextNodePolicy: .normalizeAndTrim
+            )
+        )
+        let parser = XMLTreeParser(configuration: .init(whitespaceTextNodePolicy: .preserve))
+
+        let data = try writer.writeData(treeDocument)
+        let parsed = try parser.parse(data: data)
+        XCTAssertEqual(parsed.root.children, [.text("hello world")])
+    }
+
+    func test_parser_whitespacePolicy_trim_trimsAndDropsEmptyTextNodes() throws {
+        let xml = """
+        <Root>
+            <Value>   keep me   </Value>
+            <Blank>   </Blank>
+        </Root>
+        """
+
+        let parser = XMLTreeParser(configuration: .init(whitespaceTextNodePolicy: .trim))
+        let document = try parser.parse(data: Data(xml.utf8))
+
+        guard case .element(let valueElement) = document.root.children[0] else {
+            return XCTFail("Expected first child element.")
+        }
+        XCTAssertEqual(valueElement.children, [.text("keep me")])
+
+        guard case .element(let blankElement) = document.root.children[1] else {
+            return XCTFail("Expected second child element.")
+        }
+        XCTAssertTrue(blankElement.children.isEmpty)
+    }
 }

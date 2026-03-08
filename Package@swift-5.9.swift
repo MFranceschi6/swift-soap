@@ -17,7 +17,7 @@ let package = Package(
         .library(name: "SwiftSOAPClientNIO", targets: ["SwiftSOAPClientNIO"]),
         .library(name: "SwiftSOAPServerNIO", targets: ["SwiftSOAPServerNIO"]),
         .library(name: "SwiftSOAPXMLMacros", targets: ["SwiftSOAPXMLMacros"]),
-        .plugin(name: "SwiftSOAPCodeGenPlugin", targets: ["SwiftSOAPCodeGenPlugin"]),
+        .plugin(name: "SwiftSOAPCodeGenPlugin", targets: ["SwiftSOAPCodeGenPlugin"])
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
@@ -118,6 +118,10 @@ let package = Package(
                 "SwiftSOAPXMLMacroImplementation"
             ]
         ),
+        .target(
+            name: "SwiftSOAPXMLTestSupport",
+            dependencies: ["SwiftSOAPXML"]
+        ),
         .testTarget(
             name: "SwiftSOAPCoreTests",
             dependencies: ["SwiftSOAPCore"]
@@ -134,7 +138,8 @@ let package = Package(
             name: "SwiftSOAPClientNIOTests",
             dependencies: [
                 "SwiftSOAPClientNIO",
-                .product(name: "NIOEmbedded", package: "swift-nio")
+                .product(name: "NIOEmbedded", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio")
             ]
         ),
         .testTarget(
@@ -148,6 +153,7 @@ let package = Package(
             name: "SwiftSOAPXMLTests",
             dependencies: [
                 "SwiftSOAPXML",
+                "SwiftSOAPXMLTestSupport",
                 "SwiftSOAPXMLMacros"
             ]
         ),
@@ -159,7 +165,9 @@ let package = Package(
             name: "SwiftSOAPCodeGenCoreTests",
             dependencies: [
                 "SwiftSOAPCodeGenCore",
-                "SwiftSOAPWSDL"
+                "SwiftSOAPWSDL",
+                "SwiftSOAPXML",
+                "SwiftSOAPXMLTestSupport"
             ],
             exclude: ["Fixtures"]
         ),
@@ -167,6 +175,6 @@ let package = Package(
             name: "SwiftSOAPCodeGenPlugin",
             capability: .buildTool(),
             dependencies: ["SwiftSOAPCodeGen"]
-        ),
+        )
     ]
 )

@@ -63,6 +63,21 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - deterministic root precedence (`configuration.rootElementName` > `XMLRootNode.xmlRootElementName` > type-name fallback);
   - deterministic invalid-root diagnostic (`XML6_7_ROOT_NAME_EMPTY`);
   - dedicated encoder/decoder tests for precedence, mismatch, and invalid-root paths.
+- Added XML Step `6.8` deterministic parser/writer controls:
+  - deterministic writer mode with stable attribute/namespace ordering;
+  - parser/writer whitespace policies for normalization and stable roundtrips.
+- Added XML Step `6.9` canonical/normalized public contracts:
+  - `XMLCanonicalView`, `XMLNormalizationOptions`, `XMLCanonicalizer`, `XMLTransform`, `XMLTransformPipeline`;
+  - deterministic canonicalization path with configurable transform pipeline.
+- Added XML Step `6.9H` xmlsig-boundary hardening:
+  - stable canonicalization error taxonomy (`XMLCanonicalizationErrorCode`) with deterministic stage attribution;
+  - public compatibility contracts for external canonicalizer/transform implementations.
+- Added XML Step `6.9T` test support toolkit:
+  - `SwiftSOAPXMLTestSupport` utilities (mock/spy encoder-decoder, canonicalizer contract harness) reused by XML runtime and codegen integration tests.
+- Added XML Step `6.10` runtime/codegen migration to XML coder contracts:
+  - new `SOAPXMLWireCodec` in `SwiftSOAPCore` for SOAP envelope/body/fault XML encode/decode;
+  - new transport-backed runtime clients `SOAPTransportClientAsync` and `SOAPTransportClientNIO`;
+  - generated runtime integration now exercises real XML `Data` wire roundtrip on Async and NIO paths.
 
 ### Changed
 - Added a fixed local commit gate with versioned Git hooks:
