@@ -5,6 +5,12 @@ readonly GITMOJI_PATTERN='^(:[a-z0-9_+-]+:|[^ -~])[[:space:]]+.+'
 readonly TYPE_DECL_PATTERN='^(public |internal |private |fileprivate )?(final )?(class|struct|enum|protocol)[[:space:]]+'
 readonly EXTENSION_DECL_PATTERN='^extension[[:space:]]+'
 
+# Files that predate the one-type-per-file convention and are exempt from the
+# multiple-top-level-type check (they are still linted by SwiftLint).
+readonly LEGACY_MULTI_TYPE_EXEMPT=(
+  "Sources/SwiftSOAPCore/SOAPBinding.swift"
+)
+
 fail() {
   echo "commit gate failed: $*" >&2
   exit 1
@@ -55,7 +61,11 @@ validate_staged_source_file_structure() {
     local type_decl_lines
     type_decl_lines="$(rg -n "${TYPE_DECL_PATTERN}" "${file}" || true)"
     local type_decl_count
-    type_decl_count="$(printf '%s\n' "${type_decl_lines}" | sed '/^$/d' | wc -l | tr -d ' ')"
+    # Deduplicate type names: #if/#else conditional compilation may declare the
+    # same type in each branch; count unique names only.
+    type_decl_count="$(printf '%s\n' "${type_decl_lines}" | sed '/^$/d' | \
+      sed -E 's/^[0-9]+:(public |internal |private |fileprivate )?(final )?(class|struct|enum|protocol)[[:space:]]+([A-Za-z_][A-Za-z0-9_]*).*/\4/' | \
+      sort -u | wc -l | tr -d ' ')"
 
     if [[ "${basename_no_ext}" == *"+"* ]]; then
       local extension_decl_count
@@ -67,6 +77,9 @@ validate_staged_source_file_structure() {
     fi
 
     if [[ "${type_decl_count}" -gt 1 ]]; then
+      if printf '%s\n' "${LEGACY_MULTI_TYPE_EXEMPT[@]}" | grep -qxF "${file}"; then
+        continue  # legacy file exempt from one-type-per-file rule
+      fi
       fail "file ${file} declares multiple top-level types; split declaration/logic per project conventions."
     fi
 

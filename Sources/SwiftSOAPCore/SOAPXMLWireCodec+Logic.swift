@@ -1,22 +1,6 @@
 import Foundation
 import SwiftSOAPXML
 
-// // MARK: - Swift 5.6 existential bridge
-// //
-// // `SOAPBindingOperationContract` inherits associated-type requirements from
-// // `SOAPOperationContract`. Swift < 5.7 (SE-0309) cannot use such protocols as
-// // existentials, so `as? any SOAPBindingOperationContract.Type` does not compile.
-// // A private witness protocol with no associated types acts as a metatype-castable
-// // bridge for the Swift 5.6 branch below.
-// #if swift(<5.7)
-// private protocol _SOAPBindingMetadataWitness {
-//     static var _bindingMetadataValue: SOAPBindingMetadata { get }
-// }
-// extension SOAPBindingOperationContract: _SOAPBindingMetadataWitness {
-//     static var _bindingMetadataValue: SOAPBindingMetadata { bindingMetadata }
-// }
-// #endif
-
 extension SOAPXMLWireCodec {
     public func encodeRequestEnvelope<Operation: SOAPOperationContract>(
         operation: Operation.Type,
@@ -230,8 +214,12 @@ private extension SOAPXMLWireCodec {
             return bindingOperation.bindingMetadata
         }
         #else
-        if let witness = operation as? SOAPBindingOperationContract.Type {
-            return witness._bindingMetadataValue
+        // Swift 5.6: `as? any Protocol.Type` is unavailable for protocols with
+        // associated types (SE-0309). `_SOAPHasBindingMetadata` is a no-associated-type
+        // protocol that `SOAPBindingOperationContract` inherits on this lane only,
+        // enabling a valid metatype cast.
+        if let binding = operation as? _SOAPHasBindingMetadata.Type {
+            return binding.bindingMetadata
         }
         #endif
         return SOAPBindingMetadata(envelopeVersion: .soap11, style: .document, bodyUse: .literal)
