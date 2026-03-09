@@ -22,3 +22,6 @@ codecov/
 
 # GitHub Actions local testing (act)
 .act/
+
+# Transient CI/debug logs
+*.log
