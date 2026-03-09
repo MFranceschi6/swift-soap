@@ -70,7 +70,7 @@ public struct CodeGenerationIRBuilder {
                 let schemaSwiftTypeName = sanitizeTypeName(complexType.name)
                 try ensureUniqueSymbol(schemaSwiftTypeName, generatedTypeNames: &generatedTypeNames)
 
-                let sequenceFields = complexType.sequence.enumerated().map { (index, element) in
+                let sequenceFields = complexType.sequence.enumerated().map { (index, element) -> GeneratedTypeFieldIR in
                     let swiftName = sanitizePropertyName(element.name)
                     let xmlNameValue = element.name != swiftName ? element.name : nil
                     return GeneratedTypeFieldIR(
@@ -82,7 +82,7 @@ public struct CodeGenerationIRBuilder {
                     )
                 }
 
-                let choiceFields = complexType.choice.enumerated().map { (index, element) in
+                let choiceFields = complexType.choice.enumerated().map { (index, element) -> GeneratedTypeFieldIR in
                     let swiftName = sanitizePropertyName(element.name)
                     let xmlNameValue = element.name != swiftName ? element.name : nil
                     return GeneratedTypeFieldIR(
@@ -94,7 +94,7 @@ public struct CodeGenerationIRBuilder {
                     )
                 }
 
-                let attributeFields = complexType.attributes.map { attribute in
+                let attributeFields = complexType.attributes.map { attribute -> GeneratedTypeFieldIR in
                     let swiftName = sanitizePropertyName(attribute.name)
                     let xmlNameValue = attribute.name != swiftName ? attribute.name : nil
                     return GeneratedTypeFieldIR(
@@ -351,7 +351,7 @@ public struct CodeGenerationIRBuilder {
     }
 
     private func facetConstraints(from facets: WSDLDefinition.Facets?) -> [FacetConstraintIR] {
-        guard let facets else { return [] }
+        guard let facets = facets else { return [] }
         var result: [FacetConstraintIR] = []
         if let value = facets.pattern { result.append(FacetConstraintIR(kind: .pattern, value: value)) }
         if let value = facets.minLength { result.append(FacetConstraintIR(kind: .minLength, value: String(value))) }
