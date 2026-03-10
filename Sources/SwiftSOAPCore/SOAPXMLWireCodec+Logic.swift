@@ -1,6 +1,48 @@
 import Foundation
 import SwiftSOAPXML
 
+// MARK: - Architecture: SOAP wire codec — encode/decode flow
+//
+// `SOAPXMLWireCodec` is the bridge between Swift model types and the SOAP 1.1/1.2
+// wire format.  Every encode/decode path goes through:
+//
+//   encodeRequest/ResponseMessage
+//     → encodeEnvelopeData (assembles XMLTreeDocument for the envelope)
+//          → resolves binding metadata (SOAP version, style, use)
+//          → encodePayloadElement (XMLEncoder → XMLTreeElement)
+//          → wraps in soap:Body → soap:Envelope
+//          → XMLTreeWriter → Data
+//     → SOAPTransportMessage { envelopeXMLData, attachmentManifest }
+//
+//   decodeRequest/ResponseMessage
+//     → parseEnvelope (XMLTreeParser → XMLTreeDocument)
+//     → validateEnvelopeNamespace  (checks soap:Envelope namespace URI)
+//     → validateAttachmentReferences (XOP cid: href vs manifest)
+//     → resolveBodyElement → resolvePayloadElement
+//     → XMLDecoder.decodeTree(Payload.self, from: payloadTree)
+//     → .success(payload) or .fault(SOAPFault)
+//
+// ## SOAP 1.1 vs 1.2
+//
+// Version selection is driven by `SOAPBindingMetadata.envelopeVersion`:
+//   - Envelope namespace URI differs (schemas.xmlsoap.org vs www.w3.org/2003/05)
+//   - Fault structure differs: 1.1 uses flat faultcode/faultstring/faultactor/detail;
+//     1.2 uses nested Code/Reason/Role/Detail with mandatory Text child in Reason.
+//
+// ## Binding metadata resolution
+//
+// `bindingMetadata(for:)` checks whether the operation conforms to
+// `SOAPBindingOperationContract` (Swift 5.7+) or `_SOAPHasBindingMetadata`
+// (Swift 5.6 workaround for SE-0309 existential restriction).  If neither,
+// the codec falls back to SOAP 1.1/document/literal defaults.
+//
+// ## Attachment validation (XOP/MTOM)
+//
+// After encoding, `validateAttachmentReferences` walks the XML tree looking for
+// `xop:Include` elements and confirms every `cid:` reference exists in the
+// provided `SOAPAttachmentManifest`.  This ensures referential integrity before
+// the message is handed to the transport layer.
+
 extension SOAPXMLWireCodec {
     public func encodeRequestEnvelope<Operation: SOAPOperationContract>(
         operation: Operation.Type,

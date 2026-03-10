@@ -1,11 +1,42 @@
 import Foundation
 
-// MARK: - Codable decoding stack
-// This file implements the internal Codable container types that back `XMLDecoder`:
-// `_XMLTreeDecoder`, `_XMLKeyedDecodingContainer`, `_XMLUnkeyedDecodingContainer`,
-// `_XMLSingleValueDecodingContainer`. They are file-private structs/classes rather
-// than nested types because protocol conformance synthesis (Decoder,
-// KeyedDecodingContainerProtocol, etc.) requires them to be visible at file scope.
+// MARK: - Architecture: XMLDecoder Codable implementation
+//
+// This file implements the internal Codable container types that back `XMLDecoder`.
+// Types are declared at file scope (not nested) because Swift's Codable protocol
+// conformance synthesis requires them to be visible there.
+//
+// ## Decode pipeline
+//
+//   XMLDecoder.decode(T.self, from: data)
+//     → XMLTreeParser parses raw Data into an immutable XMLTreeDocument
+//     → creates _XMLTreeDecoder wrapping the root XMLTreeElement
+//     → calls T(from: decoder) triggering the Codable machinery:
+//          → _XMLKeyedDecodingContainer   (struct/class fields)
+//          → _XMLUnkeyedDecodingContainer (arrays/sequences)
+//          → _XMLSingleValueDecodingContainer (scalars, enums)
+//
+// ## Field node kind resolution (resolvedNodeKind priority chain)
+//
+// Mirrors the encoder's priority chain exactly (see XMLEncoder+Codable.swift):
+//   1. Type-level: `_XMLFieldKindOverrideType` conformance on the expected type.
+//   2. Macro-level: `xmlFieldNodeKinds` from `XMLFieldCodingOverrideProvider`.
+//   3. Runtime: `XMLFieldCodingOverrides` on the decoder configuration.
+//   4. Default: `.element` — look for a matching child element.
+//
+// ## Scalar decoding
+//
+// `_XMLTreeDecoder.decodeScalar(_:from:codingPath:)` extracts raw text from an
+// element's child text/cdata nodes, then dispatches through `decodeScalarFromLexical`
+// for each Foundation scalar type, producing a typed diagnostic error on failure.
+//
+// ## Nil semantics
+//
+// `isNilElement(_:)` returns true when an element has no child elements AND no
+// non-empty text content.  Keyed nil resolution:
+//   - attribute present → not nil
+//   - child element absent → nil
+//   - child element present but empty → nil
 extension XMLDecoder {
     // Codable container types are implemented as file-private types below.
     // This extension anchor satisfies the '+Codable' file-naming convention.

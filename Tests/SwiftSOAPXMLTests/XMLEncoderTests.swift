@@ -273,6 +273,157 @@ final class XMLEncoderTests: XCTestCase {
         XCTAssertEqual(textContent(of: items[1]), "8")
     }
 
+    // MARK: - POST-XML-6: itemElementName sanitization
+
+    func test_encodeTree_itemElementName_withSpace_isSanitized() throws {
+        // "item name" → makeXMLSafeName → "item_name"; must never reach libxml2 writer with a space.
+        let encoder = XMLEncoder(
+            configuration: .init(
+                rootElementName: "Root",
+                itemElementName: "item name"
+            )
+        )
+        let tree = try encoder.encodeTree([1, 2, 3])
+        XCTAssertEqual(children(named: "item_name", in: tree.root).count, 3)
+    }
+
+    func test_encodeTree_itemElementName_validName_unchanged() throws {
+        let encoder = XMLEncoder(
+            configuration: .init(
+                rootElementName: "Root",
+                itemElementName: "entry"
+            )
+        )
+        let tree = try encoder.encodeTree([42])
+        XCTAssertEqual(children(named: "entry", in: tree.root).count, 1)
+    }
+
+    // MARK: - POST-XML-6: CodingKey element name early validation
+
+    func test_encodeTree_codingKeyWithWhitespace_throwsEarlyDiagnostic() throws {
+        struct BadKeys: Encodable {
+            enum CodingKeys: String, CodingKey {
+                case field = "my field"
+            }
+            let field: String
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: CodingKeys.self)
+                try c.encode(field, forKey: .field)
+            }
+        }
+
+        let encoder = XMLEncoder(configuration: .init(rootElementName: "Root"))
+        XCTAssertThrowsError(try encoder.encodeTree(BadKeys(field: "v"))) { error in
+            guard case let XMLParsingError.parseFailed(message) = error else {
+                return XCTFail("Expected XMLParsingError.parseFailed, got \(error).")
+            }
+            XCTAssertTrue((message ?? "").contains("XML6_6_FIELD_NAME_INVALID"))
+        }
+    }
+
+    func test_encodeTree_codingKeyWithXMLMetacharacter_throwsEarlyDiagnostic() throws {
+        struct BadKeys: Encodable {
+            enum CodingKeys: String, CodingKey {
+                case field = "a<b"
+            }
+            let field: Int
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: CodingKeys.self)
+                try c.encode(field, forKey: .field)
+            }
+        }
+
+        let encoder = XMLEncoder(configuration: .init(rootElementName: "Root"))
+        XCTAssertThrowsError(try encoder.encodeTree(BadKeys(field: 1))) { error in
+            guard case let XMLParsingError.parseFailed(message) = error else {
+                return XCTFail("Expected XMLParsingError.parseFailed, got \(error).")
+            }
+            XCTAssertTrue((message ?? "").contains("XML6_6_FIELD_NAME_INVALID"))
+        }
+    }
+
+    func test_encodeTree_encodeNil_invalidFieldName_throwsEarlyDiagnostic() throws {
+        struct ManualNil: Encodable {
+            enum CodingKeys: String, CodingKey {
+                case bad = "bad&key"
+            }
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: CodingKeys.self)
+                try c.encodeNil(forKey: .bad)
+            }
+        }
+
+        let encoder = XMLEncoder(configuration: .init(
+            rootElementName: "Root",
+            nilEncodingStrategy: .emptyElement
+        ))
+        XCTAssertThrowsError(try encoder.encodeTree(ManualNil())) { error in
+            guard case let XMLParsingError.parseFailed(message) = error else {
+                return XCTFail("Expected XMLParsingError.parseFailed, got \(error).")
+            }
+            XCTAssertTrue((message ?? "").contains("XML6_6_FIELD_NAME_INVALID"))
+        }
+    }
+
+    func test_encodeTree_validCodingKeys_encodeSuccessfully() throws {
+        struct Good: Encodable {
+            enum CodingKeys: String, CodingKey {
+                case firstName, lastName = "last_name", value123
+            }
+            let firstName: String
+            let lastName: String
+            let value123: Int
+        }
+
+        let encoder = XMLEncoder(configuration: .init(rootElementName: "Good"))
+        XCTAssertNoThrow(try encoder.encodeTree(Good(firstName: "a", lastName: "b", value123: 1)))
+    }
+
+    // MARK: - POST-XML-7: NilEncodingStrategy semantics
+
+    func test_encodeTree_synthesizedCodable_nilOptional_alwaysAbsentRegardlessOfStrategy() throws {
+        struct S: Encodable { var name: String? }
+
+        for strategy: XMLEncoder.NilEncodingStrategy in [.emptyElement, .omitElement] {
+            let encoder = XMLEncoder(configuration: .init(
+                rootElementName: "S",
+                nilEncodingStrategy: strategy
+            ))
+            let tree = try encoder.encodeTree(S(name: nil))
+            XCTAssertNil(
+                firstChild(named: "name", in: tree.root),
+                "Synthesised Codable nil optional must be absent with strategy .\(strategy)."
+            )
+        }
+    }
+
+    func test_encodeTree_encodeNilForAttributeKindField_alwaysOmitted() throws {
+        // encodeNil(forKey:) for a field that resolves to .attribute kind must be silently
+        // dropped regardless of NilEncodingStrategy — XML attributes have no empty-element form.
+        struct S: Encodable {
+            enum CodingKeys: String, CodingKey { case id, value }
+            let value: String
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: CodingKeys.self)
+                try c.encodeNil(forKey: .id)   // "id" is an attribute via overrides
+                try c.encode(value, forKey: .value)
+            }
+        }
+
+        let overrides = XMLFieldCodingOverrides().setting(path: [], key: "id", as: .attribute)
+        let encoder = XMLEncoder(configuration: .init(
+            rootElementName: "S",
+            fieldCodingOverrides: overrides,
+            nilEncodingStrategy: .emptyElement
+        ))
+        let tree = try encoder.encodeTree(S(value: "v"))
+        XCTAssertTrue(
+            tree.root.attributes.isEmpty,
+            "encodeNil for an attribute-kind field must always produce no attribute in output."
+        )
+        XCTAssertEqual(textForFirstChild(named: "value", in: tree.root), "v")
+    }
+
     private func firstChild(named name: String, in element: XMLTreeElement) -> XMLTreeElement? {
         element.children.first { node in
             guard case .element(let child) = node else { return false }

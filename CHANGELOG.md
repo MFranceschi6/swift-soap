@@ -6,6 +6,94 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Added (v1.0 documentation pass)
+
+#### README.md
+- Added top-level `README.md` covering installation (SPM products table), quick start
+  (define operation → implement transport → invoke), module reference, architecture
+  ASCII diagram, transport plugin pattern, XML field mapping (macros + property wrappers),
+  WSDL code generation CLI, server integration example, and contributing guide.
+- Documents the `SOAPClientTransport` protocol and the transport plugin model
+  (matching `swift-openapi-runtime` separation of protocol from concrete transports).
+- Documents `@XMLElement` / `Foundation.XMLElement` naming conflict resolution
+  (`@SwiftSOAPXMLMacros.XMLElement` disambiguation).
+
+#### Public API doccomments (POST-DOC-1)
+- Added `///` DocC doccomments to every `public` declaration across all modules:
+  - `SwiftSOAPCore`: `SOAPClientTransport`, `SOAPClientAttachmentTransport`,
+    `SOAPServerTransport`, `SOAPOperationContract`, `SOAPBindingOperationContract`,
+    `SOAPBodyPayload`, `SOAPHeaderPayload`, `SOAPFaultDetailPayload`,
+    `SOAPOperationResponse`, `SOAPCoreError`, `SOAPAction`, `SOAPBinding` (all 7 types),
+    `SOAPEnvelope`, `SOAPFault`, `SOAPXMLWireCodec`, `SOAPOperationIdentifier`,
+    `SOAPTransportMessage`, `SOAPAttachment`, `SOAPAttachmentManifest`.
+  - `SwiftSOAPXML`: `XMLEncoder`, `XMLDecoder`, `XMLFieldCoding` (enums, property
+    wrappers, override provider), `XMLParsingError`, `XMLTreeDocument`, `XMLTreeElement`,
+    `XMLTreeParser` (all nested types + security limits), `XMLTreeWriter` (all nested
+    types + security limits).
+  - `SwiftSOAPClientAsync`: `SOAPClientAsync`, `SOAPTransportClientAsync`.
+  - `SwiftSOAPServerAsync`: `SOAPServerAsync`, `SOAPAsyncOperationHandler`.
+  - `SwiftSOAPWSDL`: `WSDLDocumentParser`.
+
+#### Internal architecture comments (POST-DOC-2)
+- Added `// MARK: —` architecture comments explaining key subsystems in:
+  `XMLEncoder+Codable.swift`, `XMLDecoder+Codable.swift`, `XMLFieldCoding.swift`,
+  `SOAPXMLWireCodec+Logic.swift`, `CodeGenerationIRBuilder.swift`.
+
+### Added (Epic 8A — Macro Redesign: `@XMLCodable` + per-property peer macros)
+
+#### Macro API — annotation-driven field mapping
+- Replaced string-list `@XMLNodeMapping(attributes:elements:)` macro with a new
+  annotation-driven approach:
+  - `@XMLCodable` — extension macro on `struct`/`class`; scans member declarations
+    for `@XMLAttribute`/`@XMLElement` annotations and synthesises a static
+    `XMLFieldCodingOverrideProvider` conformance (`xmlFieldNodeKinds` dictionary).
+  - `@XMLAttribute` — peer macro (pure syntax marker); marks a stored property as
+    an XML attribute. Generates no code; read by `@XMLCodable` at compile time.
+  - `@XMLElement` — peer macro (pure syntax marker); marks a stored property as an
+    XML child element. Generates no code; read by `@XMLCodable` at compile time.
+- Properties without either annotation are not added to `xmlFieldNodeKinds`; the
+  encoder falls back to its default resolution (`.element`).
+- `@XMLAttribute`/`@XMLElement` without `@XMLCodable` on the enclosing type compile
+  successfully but have no runtime effect (documented as no-op in the macro doc-comments).
+- `@XMLCodable` on an unsupported declaration kind (e.g. `enum`) emits compile-time
+  diagnostic `XML8A_INVALID_DECL`.
+- New source files: `Sources/SwiftSOAPXMLMacros/XMLCodableMacros.swift`,
+  `Sources/SwiftSOAPXMLMacroImplementation/XMLCodableMacro.swift`,
+  `Sources/SwiftSOAPXMLMacroImplementation/XMLAttributeMacro.swift`,
+  `Sources/SwiftSOAPXMLMacroImplementation/XMLElementMacro.swift`.
+
+#### Breaking changes (pre-release library)
+- `@XMLNodeMapping` macro and its implementation removed. Migrate to `@XMLCodable`
+  with per-property `@XMLAttribute`/`@XMLElement` annotations.
+- `@_exported import SwiftSOAPXML` removed from `SwiftSOAPXMLMacros`; consumers that
+  previously relied on the implicit re-export must add `import SwiftSOAPXML` explicitly.
+- Property wrappers `XMLAttribute<T>` / `XMLElement<T>` in `SwiftSOAPXML` are
+  unchanged; they remain the annotation mechanism for pre-5.9 lanes.
+
+#### Tests
+- `XMLFieldMappingTests.MacroMappedPayload` migrated from `@XMLNodeMapping` to
+  `@XMLCodable` + per-property annotations; integration test
+  `test_macroMapping_encodeAndDecode_attributeAndElementMapping` updated accordingly.
+- `XMLNodeMappingMacroDiagnosticsTests.swift` removed (no longer applicable).
+
+### Added (Epic 7A — XML Quality Quick Wins)
+
+#### POST-XML-6 — Encoder XML name validation
+- `itemElementName` in `XMLEncoder.Configuration` is now sanitised via
+  `makeXMLSafeName` at construction time (spaces and invalid chars replaced with `_`;
+  leading digit prepended with `_`), consistent with `rootElementName` behaviour.
+- Added private `_validateXMLFieldName(_:context:)` in `XMLEncoder+Codable.swift`:
+  rejects empty names and names containing whitespace or XML metacharacters
+  (`<`, `>`, `&`, `"`, `'`) with a stable diagnostic code `XML6_6_FIELD_NAME_INVALID`.
+  Applied at `encodeNil(forKey:)` and `encodeEncodable(_:forKey:)` entry points.
+
+#### POST-XML-7 — Optional-nil semantics clarification
+- `NilEncodingStrategy` doc-comments enriched: explains that synthesised `Codable`
+  uses `encodeIfPresent` (strategy has no effect on `Optional` fields), that the
+  strategy only applies when `encodeNil(forKey:)` is called explicitly, and that
+  `@XMLAttribute` nil always omits the attribute regardless of strategy.
+- Added regression tests covering both code-paths.
+
 ### Fixed
 - Fixed Linux CI build failure by adding missing `SwiftSOAPCompatibility` imports in `XMLTreeParser+Logic.swift` and `XMLTreeWriter+Logic.swift`.
 - Fixed Linux CI build failure: `XML_ELEMENT_NODE` and related libxml2 constants not in scope — added `#include <libxml/tree.h>` to `SwiftSOAPXMLCShim.h`.

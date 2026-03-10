@@ -6,17 +6,17 @@ import SwiftSOAPXMLMacros
 #endif
 
 #if canImport(SwiftSOAPXMLMacros)
-@XMLNodeMapping(attributes: ["id"], elements: ["name"])
+@XMLCodable
 private struct MacroMappedPayload: Codable, Equatable {
-    let id: Int
-    let name: String
+    @XMLAttribute let id: Int
+    @XMLElement let name: String
 }
 #endif
 
 final class XMLFieldMappingTests: XCTestCase {
     func test_wrappers_encodeAndDecode_attributeAndElementMapping() throws {
         struct Payload: Codable, Equatable {
-            @XMLAttribute var id: Int
+            @SwiftSOAPXML.XMLAttribute var id: Int
             @SwiftSOAPXML.XMLElement var name: String
 
             init(id: Int, name: String) {
@@ -144,7 +144,7 @@ final class XMLFieldMappingTests: XCTestCase {
         }
 
         struct Payload: Encodable {
-            @XMLAttribute var child: Child
+            @SwiftSOAPXML.XMLAttribute var child: Child
         }
 
         let encoder = XMLEncoder(configuration: .init(rootElementName: "Payload"))
