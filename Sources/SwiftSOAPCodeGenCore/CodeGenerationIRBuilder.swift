@@ -1,6 +1,45 @@
 import Foundation
 import SwiftSOAPWSDL
 
+// MARK: - Architecture: WSDL → IR pipeline
+//
+// `CodeGenerationIRBuilder` transforms a parsed `WSDLDefinition` into a
+// `SOAPCodeGenerationIR`, the language-neutral intermediate representation
+// consumed by `SwiftCodeEmitter` to produce Swift source files.
+//
+// ## Pipeline stages
+//
+//   build(from: WSDLDefinition, configuration:)
+//     │
+//     ├─ buildMessagePayloadTypes   → one GeneratedTypeIR per WSDL <message>
+//     │    Each message becomes a Swift struct conforming to SOAPBodyPayload,
+//     │    with one optional field per message <part>.
+//     │
+//     ├─ buildSchemaTypes           → one GeneratedTypeIR per <complexType> in <types>
+//     │    XSD sequence elements → required/optional fields (minOccurs drives optionality)
+//     │    XSD choice elements   → all optional fields (any-of semantics)
+//     │    XSD attributes        → XMLAttribute-annotated fields
+//     │
+//     └─ buildServiceIR (per service)
+//          └─ buildPortIR (per port) → resolves binding → resolves portType
+//               └─ buildOperationIR (per operation)
+//                    Resolves input/output/fault message references,
+//                    produces ServiceOperationIR with request/response/fault type names.
+//
+// ## Name sanitisation
+//
+// Swift identifier rules differ from WSDL/XSD naming (hyphens, leading digits,
+// reserved words).  `sanitizeTypeName` and `sanitizePropertyName` normalise names
+// to valid lowerCamelCase / UpperCamelCase Swift identifiers.  When a name is
+// changed, the original XML name is preserved in `xmlName` so the emitter can
+// emit the correct CodingKey mapping.
+//
+// ## Symbol uniqueness
+//
+// `generatedTypeNames` (inout Set) tracks all emitted Swift type names across the
+// full build to prevent collisions.  `ensureUniqueSymbol` throws if a name would
+// be duplicated, surfacing the conflict as a diagnostics error.
+
 public struct CodeGenerationIRBuilder {
     public init() {}
 

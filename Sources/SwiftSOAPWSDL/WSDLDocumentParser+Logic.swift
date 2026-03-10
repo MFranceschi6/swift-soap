@@ -2,6 +2,39 @@ import Foundation
 import SwiftSOAPXML
 // swiftlint:disable file_length
 
+// MARK: - Architecture: WSDL 1.1 parse pipeline
+//
+// `WSDLDocumentParser+Logic` implements the WSDL 1.1 document traversal.
+//
+// ## Parse pipeline
+//
+//   WSDLDocumentParser.parse(data:)
+//     → XMLTreeParser parses raw bytes → XMLTreeDocument
+//     → parseDocument(data:sourceURL:)  (this file)
+//          → resolves the root <definitions> element
+//          → parses child sections in order:
+//               types    → XSD inline schema (complexTypes, simpleTypes)
+//               message  → WSDL <message> elements with <part> children
+//               portType → abstract operations (input/output/fault refs)
+//               binding  → concrete protocol bindings (SOAP 1.1/1.2)
+//               service  → endpoints (port + binding refs)
+//          → returns WSDLDefinition
+//
+// ## XSD type support
+//
+// Only XSD structures commonly found in WSDL 1.1 inline schemas are parsed:
+//   - `<complexType>` with `<sequence>`, `<choice>`, `<attribute>` children
+//   - `<simpleType>` with `<restriction>` + `<enumeration>` (string enums)
+//   - `<element>` at the schema top level
+// XSD features not used in SOAP/WSDL contexts (e.g., `<group>`, `<any>`,
+// `<extension>`, deep `<redefine>`) are silently skipped.
+//
+// ## Name resolution strategy
+//
+// WSDL uses QNames (namespace-prefixed) to reference types and messages across
+// sections.  This parser stores raw local names for intra-document references
+// and relies on `CodeGenerationIRBuilder` for cross-section resolution by name.
+
 extension WSDLDocumentParser {
     func parseDocument(data: Data, sourceURL: URL?) throws -> WSDLDefinition {
         logger.debug("Parsing WSDL document", metadata: [

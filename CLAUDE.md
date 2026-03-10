@@ -25,6 +25,11 @@ For full project policy and detailed workflow constraints, see `agent.md`.
 - Match repository naming conventions (`Type.swift`, `Type+Logic.swift`, etc.).
 - Avoid Apple-only APIs in runtime code paths.
 - Include regression tests for bug fixes and meaningful coverage for feature changes.
+- **No raw strings for domain values**: when a value is a named domain concept (operation
+  identifier, SOAP action, binding name, namespace URI, etc.), represent it as a typed
+  constant, `static let`, or enum case — never a bare string literal at call sites.
+  In code-generated output this means generating named `static let` constants or enum
+  namespaces from WSDL metadata rather than inline `rawValue:` string literals.
 
 ## Required Validation (before closure)
 - Build:

@@ -60,6 +60,15 @@ public struct XMLDecoder: Sendable {
         /// Configuration forwarded to the underlying `XMLTreeParser`.
         public let parserConfiguration: XMLTreeParser.Configuration
 
+        /// Creates a decoder configuration.
+        ///
+        /// - Parameters:
+        ///   - rootElementName: Expected root element name override. `nil` resolves from `@XMLRootNode` or skips validation.
+        ///   - itemElementName: Expected element name for collection items. Defaults to `"item"`.
+        ///   - fieldCodingOverrides: Per-field node-kind overrides. Defaults to empty (all elements).
+        ///   - dateDecodingStrategy: How text content is decoded into `Date`. Defaults to a multi-format chain.
+        ///   - dataDecodingStrategy: How text content is decoded into `Data`. Defaults to `.base64`.
+        ///   - parserConfiguration: Parser options forwarded to `XMLTreeParser`.
         public init(
             rootElementName: String? = nil,
             itemElementName: String = "item",
@@ -127,10 +136,24 @@ public struct XMLDecoder: Sendable {
         }
     }
     #else
+    /// Decodes `type` from a pre-parsed `XMLTreeDocument`.
+    ///
+    /// - Parameters:
+    ///   - type: The `Decodable` type to decode into.
+    ///   - tree: The source document tree.
+    /// - Returns: A decoded instance of `type`.
+    /// - Throws: `XMLParsingError` on decoding failure or root element mismatch.
     public func decodeTree<T: Decodable>(_ type: T.Type, from tree: XMLTreeDocument) throws -> T {
         try decodeTreeImpl(type, from: tree)
     }
 
+    /// Decodes `type` from raw XML `Data`.
+    ///
+    /// - Parameters:
+    ///   - type: The `Decodable` type to decode into.
+    ///   - data: Raw UTF-8 encoded XML data.
+    /// - Returns: A decoded instance of `type`.
+    /// - Throws: `XMLParsingError` on parse or decode failure.
     public func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
         let parser = XMLTreeParser(configuration: configuration.parserConfiguration)
         let tree = try parser.parse(data: data)

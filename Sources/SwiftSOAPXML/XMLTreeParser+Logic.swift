@@ -2,6 +2,30 @@ import Foundation
 import SwiftSOAPCompatibility
 import SwiftSOAPXMLCShim
 
+// MARK: - Architecture: libxml2 → XMLTreeDocument conversion
+//
+// `XMLTreeParser+Logic` contains the internal traversal that converts a libxml2
+// `XMLDocument` (a C-level DOM) into the Swift-native immutable `XMLTreeDocument`.
+//
+// ## Parse pipeline
+//
+//   XMLTreeParser.parse(data:)          (in XMLTreeParser.swift)
+//     → libxml2 parses raw bytes into XMLDocument (C DOM)
+//     → parseDocument(_ document:)     (this file)
+//          → walks document.rootElement() recursively via parseElement
+//          → text / CDATA / comment nodes → XMLTreeNode cases
+//          → element nodes → XMLTreeElement (name, attributes, ns declarations)
+//          → whitespace-only text nodes dropped if whitespaceTextNodePolicy == .dropWhitespaceOnly
+//     → returns XMLTreeDocument { root: XMLTreeElement }
+//
+// ## Namespace handling
+//
+// Namespace prefix bindings declared on an element (xmlns:prefix="uri") are
+// captured in `XMLNamespaceDeclaration` values on `XMLTreeElement.namespaceDeclarations`.
+// The qualified name (prefix + localName + namespaceURI) is stored in `XMLQualifiedName`.
+// The parser does NOT resolve inherited namespaces — consumers must do their own
+// lookup via `XMLNamespaceResolver` if needed.
+
 extension XMLTreeParser {
     func parseDocument(_ document: XMLDocument) throws -> XMLTreeDocument {
         guard let rootNode = document.rootElement() else {

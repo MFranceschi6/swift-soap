@@ -4,6 +4,8 @@ import SwiftSyntaxMacros
 @main
 struct SwiftSOAPXMLMacroPlugin: CompilerPlugin {
     let providingMacros: [Macro.Type] = [
-        XMLNodeMappingMacro.self
+        XMLAttributeMacro.self,
+        XMLElementMacro.self,
+        XMLCodableMacro.self,
     ]
 }

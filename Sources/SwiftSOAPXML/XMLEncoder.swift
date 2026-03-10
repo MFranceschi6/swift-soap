@@ -15,6 +15,41 @@ import Foundation
 /// additional synchronisation.
 public struct XMLEncoder: Sendable {
     /// Controls how optional (`nil`) values are represented in the XML output.
+    ///
+    /// ## Synthesised `Codable` conformances
+    ///
+    /// Swift's compiler-synthesised `encode(to:)` calls `encodeIfPresent(_:forKey:)` for
+    /// optional properties. The default protocol implementation of `encodeIfPresent` skips
+    /// encoding entirely when the value is `nil`, without ever invoking `encodeNil(forKey:)`.
+    /// As a result, `NilEncodingStrategy` has **no effect** on optional properties whose
+    /// `Encodable` conformance is synthesised by the compiler:
+    ///
+    /// ```swift
+    /// struct Example: Encodable { var name: String? }
+    /// // name == nil → no <name> element regardless of NilEncodingStrategy
+    /// ```
+    ///
+    /// ## Explicit `encodeNil` calls
+    ///
+    /// `NilEncodingStrategy` applies when your custom `encode(to:)` explicitly calls
+    /// `try container.encodeNil(forKey:)`:
+    ///
+    /// ```swift
+    /// func encode(to encoder: Encoder) throws {
+    ///     var c = encoder.container(keyedBy: CodingKeys.self)
+    ///     try c.encodeNil(forKey: .field)   // NilEncodingStrategy applies here
+    /// }
+    /// ```
+    ///
+    /// - With `.emptyElement` (default): an empty `<field/>` element is emitted.
+    /// - With `.omitElement`: the element is omitted entirely.
+    ///
+    /// ## `@XMLAttribute` optional properties
+    ///
+    /// A `nil` value in an `@XMLAttribute`-wrapped property always results in the
+    /// attribute being **omitted**, regardless of `NilEncodingStrategy`. This follows
+    /// the XML convention that absent attributes and attributes with no value are
+    /// semantically equivalent for most use cases.
     public enum NilEncodingStrategy: Sendable, Hashable {
         /// Emit an empty element (`<field/>`). This is the default.
         case emptyElement
@@ -68,6 +103,16 @@ public struct XMLEncoder: Sendable {
         /// Configuration forwarded to the underlying `XMLTreeWriter`.
         public let writerConfiguration: XMLTreeWriter.Configuration
 
+        /// Creates an encoder configuration.
+        ///
+        /// - Parameters:
+        ///   - rootElementName: Override the root element name. `nil` resolves from `@XMLRootNode` or the type name.
+        ///   - itemElementName: Element name for collection items. Defaults to `"item"`.
+        ///   - fieldCodingOverrides: Per-field node-kind overrides. Defaults to empty (all elements).
+        ///   - nilEncodingStrategy: How `nil` values are represented. Defaults to `.emptyElement`.
+        ///   - dateEncodingStrategy: How `Date` values are serialised. Defaults to `.xsdDateTimeISO8601`.
+        ///   - dataEncodingStrategy: How `Data` values are serialised. Defaults to `.base64`.
+        ///   - writerConfiguration: Writer options forwarded to `XMLTreeWriter`.
         public init(
             rootElementName: String? = nil,
             itemElementName: String = "item",
@@ -132,10 +177,20 @@ public struct XMLEncoder: Sendable {
         }
     }
     #else
+    /// Encodes `value` into an `XMLTreeDocument`.
+    ///
+    /// - Parameter value: The value to encode.
+    /// - Returns: An `XMLTreeDocument` whose root element represents `value`.
+    /// - Throws: `XMLParsingError` on encoding failure.
     public func encodeTree<T: Encodable>(_ value: T) throws -> XMLTreeDocument {
         try encodeTreeImpl(value)
     }
 
+    /// Encodes `value` into raw XML `Data`.
+    ///
+    /// - Parameter value: The value to encode.
+    /// - Returns: UTF-8 encoded XML data.
+    /// - Throws: `XMLParsingError` on encoding or serialisation failure.
     public func encode<T: Encodable>(_ value: T) throws -> Data {
         let tree = try encodeTreeImpl(value)
         let writer = XMLTreeWriter(configuration: configuration.writerConfiguration)

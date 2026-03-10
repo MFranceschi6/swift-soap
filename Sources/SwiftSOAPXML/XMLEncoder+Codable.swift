@@ -1,5 +1,47 @@
 import Foundation
 
+// MARK: - Architecture: XMLEncoder Codable implementation
+//
+// This file contains the internal machinery that backs `XMLEncoder.encode(_:)`.
+// It follows the standard Swift Codable pattern (containers + recursive descent),
+// adapted for XML's structure where fields can be serialised as either
+// child *elements* or *attributes* depending on per-field configuration.
+//
+// ## Build pipeline
+//
+//   XMLEncoder.encode(value)
+//     → resolves root element name (XMLRootNameResolver)
+//     → creates _XMLTreeElementBox (mutable in-memory tree)
+//     → creates _XMLTreeEncoder wrapping that box
+//     → calls value.encode(to: encoder)
+//          → _XMLKeyedEncodingContainer   (struct/class fields)
+//          → _XMLUnkeyedEncodingContainer (arrays/sequences)
+//          → _XMLSingleValueEncodingContainer (scalars, enums)
+//     → _XMLTreeElementBox.makeElement() collapses the mutable box into
+//       an immutable XMLTreeElement
+//     → XMLTreeWriter serialises the tree to Data
+//
+// ## Field node kind resolution (resolvedNodeKind priority chain)
+//
+// Each field in a keyed container is resolved in order:
+//   1. Type-level: if the value's type conforms to `_XMLFieldKindOverrideType`
+//      (satisfied by the `XMLAttribute<T>` / `XMLElement<T>` property wrappers),
+//      its `_xmlFieldNodeKindOverride` is used unconditionally.
+//   2. Macro-level: if the enclosing type conforms to
+//      `XMLFieldCodingOverrideProvider` (synthesised by `@XMLCodable`), the static
+//      `xmlFieldNodeKinds` dictionary is consulted by field name (CodingKey.stringValue).
+//   3. Runtime: `XMLFieldCodingOverrides` attached to the encoder configuration
+//      allows call-site control keyed by dotted coding-path string.
+//   4. Default: `.element` — every field becomes a child XML element.
+//
+// ## Scalar boxing (boxedScalar)
+//
+// Before attempting a nested encode, the encoder tries to serialise the value
+// as a plain string via `boxedScalar(_:codingPath:localName:isAttribute:)`.
+// This handles the full Foundation scalar set (Int, Double, Bool, Decimal, Date,
+// Data, URL, UUID) without creating an intermediate XML tree level.  Complex
+// (non-scalar) types fall through and are encoded recursively via a nested encoder.
+
 func _xmlFieldNodeKinds<T>(for type: T.Type) -> [String: XMLFieldNodeKind] {
     guard let provider = type as? XMLFieldCodingOverrideProvider.Type else {
         return [:]
@@ -15,11 +57,31 @@ struct _XMLEncoderOptions {
     let dataEncodingStrategy: XMLEncoder.DataEncodingStrategy
 
     init(configuration: XMLEncoder.Configuration) {
-        self.itemElementName = configuration.itemElementName
+        // Sanitize itemElementName using the same policy as root element names so that
+        // invalid characters never reach the libxml2 writer stage.
+        self.itemElementName = XMLRootNameResolver.makeXMLSafeName(configuration.itemElementName)
         self.fieldCodingOverrides = configuration.fieldCodingOverrides
         self.nilEncodingStrategy = configuration.nilEncodingStrategy
         self.dateEncodingStrategy = configuration.dateEncodingStrategy
         self.dataEncodingStrategy = configuration.dataEncodingStrategy
+    }
+}
+
+// Validates that `name` can serve as an XML element or attribute name.
+// Rejects characters that would cause a late libxml2 writer failure with no
+// actionable diagnostic: whitespace and XML structure metacharacters.
+private func _validateXMLFieldName(_ name: String, context: String) throws {
+    let invalid = name.isEmpty || name.unicodeScalars.contains { scalar in
+        let codePoint = scalar.value
+        return codePoint == 0x20 || codePoint == 0x09 || codePoint == 0x0A || codePoint == 0x0D  // whitespace
+            || codePoint == 0x3C || codePoint == 0x3E                              // < >
+            || codePoint == 0x26                                                   // &
+            || codePoint == 0x22 || codePoint == 0x27                             // " '
+    }
+    if invalid {
+        throw XMLParsingError.parseFailed(
+            message: "[XML6_6_FIELD_NAME_INVALID] '\(name)' is not a valid XML name in \(context)."
+        )
     }
 }
 
@@ -253,6 +315,7 @@ struct _XMLKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingContainerProtoco
         if resolvedNodeKind(for: key, valueType: Never.self) == .attribute {
             return
         }
+        try _validateXMLFieldName(key.stringValue, context: "encodeNil field '\(key.stringValue)'")
         encoder.addNilElementIfNeeded(localName: key.stringValue)
     }
 
@@ -276,6 +339,7 @@ struct _XMLKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingContainerProtoco
     }
 
     private mutating func encodeEncodable<T: Encodable>(_ value: T, forKey key: Key) throws {
+        try _validateXMLFieldName(key.stringValue, context: "field '\(key.stringValue)'")
         let nodeKind = resolvedNodeKind(for: key, valueType: T.self)
         if nodeKind == .attribute {
             try encodeAttribute(value, forKey: key)
@@ -377,6 +441,7 @@ struct _XMLKeyedEncodingContainer<Key: CodingKey>: KeyedEncodingContainerProtoco
         )
     }
 
+    // MARK: Field node kind resolution — priority chain (see file-level comment)
     private func resolvedNodeKind<T>(for key: Key, valueType: T.Type) -> XMLFieldNodeKind {
         if let typeOverride = valueType as? _XMLFieldKindOverrideType.Type {
             return typeOverride._xmlFieldNodeKindOverride
