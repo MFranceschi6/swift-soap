@@ -17,7 +17,9 @@ codecov/
 
 # Local tooling/editor state
 .cursor/
-.claude/
+.claude/*
+!.claude/skills/
+!.claude/skills/**
 .vscode/
 
 # GitHub Actions local testing (act)
