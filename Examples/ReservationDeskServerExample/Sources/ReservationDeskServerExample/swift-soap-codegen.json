@@ -1,0 +1,9 @@
+{
+  "wsdlPath": "WSDL/reservation-desk.wsdl",
+  "moduleName": "ReservationDeskServerExample",
+  "targetSwiftVersion": "6.0",
+  "outputMode": "build",
+  "buildOutputDirectory": ".build/swift-soap-codegen",
+  "runtimeTargets": ["async", "nio"],
+  "generationScope": ["server"]
+}

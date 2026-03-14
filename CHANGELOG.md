@@ -38,6 +38,9 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   emit source-level XML annotations for attribute-backed fields: `@XMLCodable` +
   `@XMLAttribute` on Swift 5.9+ targets, and `@SwiftSOAPXML.XMLAttribute` property
   wrappers on earlier targets.
+- Added `Examples/ReservationDeskServerExample/`, a standalone SPM executable example
+  for evaluating the generated server authoring surface across async and NIO
+  implementations, with typed success payloads, empty business responses, and SOAP faults.
 - Non-enumeration generated `simpleType` wrappers are now emitted as text-backed
   Codable value objects instead of synthetic keyed `<rawValue>` child-element models,
   keeping their XML wire shape aligned with XSD simple-type semantics.
@@ -65,7 +68,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
   - named doc/literal wrapper elements backed by named complex types
   - `complexContent/extension` inheritance flattening
   - required and optional direct `choice` groups with generated exclusivity validation
-  - `xsd:attribute` fields emitted with `XMLFieldCodingOverrideProvider` and XML-safe lookup keys
+  - `xsd:attribute` fields emitted with macro/property-wrapper XML annotations depending on target Swift version
   - `simpleContent` parsing, protocol inheritance, and flattened text-plus-attribute field generation
   - nested `attributeGroup` reuse for both `complexType` and `simpleContent` attribute flattening
   - top-level `attribute` definitions reused via `attribute ref="..."`

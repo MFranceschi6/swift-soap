@@ -1,0 +1,169 @@
+<wsdl:definitions
+    xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+    xmlns:tns="urn:reservation-desk"
+    xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+    xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+    targetNamespace="urn:reservation-desk"
+    name="ReservationDesk">
+  <wsdl:types>
+    <xsd:schema targetNamespace="urn:reservation-desk">
+      <xsd:complexType name="CreateReservationRequestType">
+        <xsd:sequence>
+          <xsd:element name="guestEmail" type="xsd:string"/>
+          <xsd:element name="roomCode" type="xsd:string"/>
+          <xsd:element name="arrivalDate" type="xsd:string"/>
+          <xsd:element name="nights" type="xsd:int"/>
+        </xsd:sequence>
+      </xsd:complexType>
+
+      <xsd:complexType name="CreateReservationResponseType">
+        <xsd:sequence>
+          <xsd:element name="reservationId" type="xsd:string"/>
+          <xsd:element name="status" type="xsd:string"/>
+          <xsd:element name="quotedAmount" type="xsd:decimal"/>
+        </xsd:sequence>
+      </xsd:complexType>
+
+      <xsd:complexType name="AppendReservationNoteRequestType">
+        <xsd:sequence>
+          <xsd:element name="reservationId" type="xsd:string"/>
+          <xsd:element name="author" type="xsd:string"/>
+          <xsd:element name="note" type="xsd:string"/>
+        </xsd:sequence>
+      </xsd:complexType>
+
+      <xsd:complexType name="AppendReservationNoteResponseType">
+        <xsd:sequence/>
+      </xsd:complexType>
+
+      <xsd:complexType name="GetReservationTimelineRequestType">
+        <xsd:sequence>
+          <xsd:element name="reservationId" type="xsd:string"/>
+        </xsd:sequence>
+      </xsd:complexType>
+
+      <xsd:complexType name="ReservationTimelineEvent">
+        <xsd:sequence>
+          <xsd:element name="timestamp" type="xsd:string"/>
+          <xsd:element name="category" type="xsd:string"/>
+          <xsd:element name="summary" type="xsd:string"/>
+        </xsd:sequence>
+      </xsd:complexType>
+
+      <xsd:complexType name="GetReservationTimelineResponseType">
+        <xsd:sequence>
+          <xsd:element name="reservationId" type="xsd:string"/>
+          <xsd:element name="status" type="xsd:string"/>
+          <xsd:element name="events" type="tns:ReservationTimelineEvent" minOccurs="0" maxOccurs="unbounded"/>
+        </xsd:sequence>
+      </xsd:complexType>
+
+      <xsd:complexType name="CancelReservationRequestType">
+        <xsd:sequence>
+          <xsd:element name="reservationId" type="xsd:string"/>
+          <xsd:element name="reason" type="xsd:string"/>
+        </xsd:sequence>
+      </xsd:complexType>
+
+      <xsd:complexType name="CancelReservationResponseType">
+        <xsd:sequence>
+          <xsd:element name="reservationId" type="xsd:string"/>
+          <xsd:element name="cancelledAt" type="xsd:string"/>
+          <xsd:element name="refundAmount" type="xsd:decimal"/>
+        </xsd:sequence>
+      </xsd:complexType>
+
+      <xsd:element name="CreateReservationRequest" type="tns:CreateReservationRequestType"/>
+      <xsd:element name="CreateReservationResponse" type="tns:CreateReservationResponseType"/>
+      <xsd:element name="AppendReservationNoteRequest" type="tns:AppendReservationNoteRequestType"/>
+      <xsd:element name="AppendReservationNoteResponse" type="tns:AppendReservationNoteResponseType"/>
+      <xsd:element name="GetReservationTimelineRequest" type="tns:GetReservationTimelineRequestType"/>
+      <xsd:element name="GetReservationTimelineResponse" type="tns:GetReservationTimelineResponseType"/>
+      <xsd:element name="CancelReservationRequest" type="tns:CancelReservationRequestType"/>
+      <xsd:element name="CancelReservationResponse" type="tns:CancelReservationResponseType"/>
+    </xsd:schema>
+  </wsdl:types>
+
+  <wsdl:message name="CreateReservationRequest">
+    <wsdl:part name="parameters" element="tns:CreateReservationRequest"/>
+  </wsdl:message>
+  <wsdl:message name="CreateReservationResponse">
+    <wsdl:part name="parameters" element="tns:CreateReservationResponse"/>
+  </wsdl:message>
+  <wsdl:message name="AppendReservationNoteRequest">
+    <wsdl:part name="parameters" element="tns:AppendReservationNoteRequest"/>
+  </wsdl:message>
+  <wsdl:message name="AppendReservationNoteResponse">
+    <wsdl:part name="parameters" element="tns:AppendReservationNoteResponse"/>
+  </wsdl:message>
+  <wsdl:message name="GetReservationTimelineRequest">
+    <wsdl:part name="parameters" element="tns:GetReservationTimelineRequest"/>
+  </wsdl:message>
+  <wsdl:message name="GetReservationTimelineResponse">
+    <wsdl:part name="parameters" element="tns:GetReservationTimelineResponse"/>
+  </wsdl:message>
+  <wsdl:message name="CancelReservationRequest">
+    <wsdl:part name="parameters" element="tns:CancelReservationRequest"/>
+  </wsdl:message>
+  <wsdl:message name="CancelReservationResponse">
+    <wsdl:part name="parameters" element="tns:CancelReservationResponse"/>
+  </wsdl:message>
+  <wsdl:message name="ReservationProblem">
+    <wsdl:part name="code" type="xsd:string"/>
+    <wsdl:part name="message" type="xsd:string"/>
+    <wsdl:part name="retryable" type="xsd:boolean"/>
+  </wsdl:message>
+
+  <wsdl:portType name="AgentPortType">
+    <wsdl:operation name="CreateReservation">
+      <wsdl:input message="tns:CreateReservationRequest"/>
+      <wsdl:output message="tns:CreateReservationResponse"/>
+      <wsdl:fault name="ReservationProblem" message="tns:ReservationProblem"/>
+    </wsdl:operation>
+    <wsdl:operation name="AppendReservationNote">
+      <wsdl:input message="tns:AppendReservationNoteRequest"/>
+      <wsdl:output message="tns:AppendReservationNoteResponse"/>
+    </wsdl:operation>
+    <wsdl:operation name="GetReservationTimeline">
+      <wsdl:input message="tns:GetReservationTimelineRequest"/>
+      <wsdl:output message="tns:GetReservationTimelineResponse"/>
+    </wsdl:operation>
+    <wsdl:operation name="CancelReservation">
+      <wsdl:input message="tns:CancelReservationRequest"/>
+      <wsdl:output message="tns:CancelReservationResponse"/>
+      <wsdl:fault name="ReservationProblem" message="tns:ReservationProblem"/>
+    </wsdl:operation>
+  </wsdl:portType>
+
+  <wsdl:binding name="AgentBinding" type="tns:AgentPortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="CreateReservation">
+      <soap:operation soapAction="urn:reservation-desk#createReservation" style="document"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+      <wsdl:fault name="ReservationProblem"><soap:fault name="ReservationProblem" use="literal"/></wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="AppendReservationNote">
+      <soap:operation soapAction="urn:reservation-desk#appendReservationNote" style="document"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetReservationTimeline">
+      <soap:operation soapAction="urn:reservation-desk#getReservationTimeline" style="document"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="CancelReservation">
+      <soap:operation soapAction="urn:reservation-desk#cancelReservation" style="document"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+      <wsdl:fault name="ReservationProblem"><soap:fault name="ReservationProblem" use="literal"/></wsdl:fault>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <wsdl:service name="ReservationDesk">
+    <wsdl:port name="AgentPort" binding="tns:AgentBinding">
+      <soap:address location="https://example.invalid/reservation-desk"/>
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>
