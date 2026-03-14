@@ -14,14 +14,14 @@ let package = Package(
         .executableTarget(
             name: "CalculatorClient",
             dependencies: [
-                .product(name: "SwiftSOAPClientAsync", package: "happy-goldstine")
+                .product(name: "SwiftSOAPClientAsync", package: "swift-soap")
             ],
             path: "Sources/CalculatorClient",
             exclude: [
                 "swift-soap-codegen.json"
             ],
             plugins: [
-                .plugin(name: "SwiftSOAPCodeGenPlugin", package: "happy-goldstine")
+                .plugin(name: "SwiftSOAPCodeGenPlugin", package: "swift-soap")
             ]
         )
     ],
