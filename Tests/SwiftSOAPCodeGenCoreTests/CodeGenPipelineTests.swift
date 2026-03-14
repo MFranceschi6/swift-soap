@@ -170,7 +170,7 @@ final class CodeGenPipelineTests: XCTestCase {
 
             let generator = CodeGenerator()
             let artifacts = try generator.generate(configuration: configuration)
-            let generatedSource = try XCTUnwrap(artifacts.first?.contents)
+            let generatedSource = artifacts.map(\.contents).joined(separator: "\n")
 
             XCTAssertTrue(generatedSource.contains("envelopeVersion: .\(testCase.expectedVersion)"))
             XCTAssertTrue(generatedSource.contains("style: .\(testCase.style)"))
@@ -248,7 +248,7 @@ final class CodeGenPipelineTests: XCTestCase {
 
         let generator = CodeGenerator()
         let artifacts = try generator.generate(configuration: configuration)
-        let generatedSource = try XCTUnwrap(artifacts.first?.contents)
+        let generatedSource = artifacts.map(\.contents).joined(separator: "\n")
 
         XCTAssertTrue(generatedSource.contains("public let client: any SOAPClientAsync"))
         XCTAssertTrue(generatedSource.contains("async throws -> SOAPOperationResponse"))
@@ -303,6 +303,94 @@ final class CodeGenPipelineTests: XCTestCase {
             }
             XCTAssertEqual(codeGenError.code, .unsupportedSwiftTarget)
         }
+    }
+
+    func test_generate_withExternalXSDImport_resolvesTypesFromImportedSchema() throws {
+        let tempDirectory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        let xsd = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <xsd:schema targetNamespace="urn:weather"
+                    xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+          <xsd:complexType name="WeatherRequest">
+            <xsd:sequence>
+              <xsd:element name="city" type="xsd:string"/>
+            </xsd:sequence>
+          </xsd:complexType>
+          <xsd:complexType name="WeatherResponse">
+            <xsd:sequence>
+              <xsd:element name="temperature" type="xsd:string"/>
+            </xsd:sequence>
+          </xsd:complexType>
+        </xsd:schema>
+        """
+
+        let wsdl = """
+        <wsdl:definitions
+            xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+            xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+            xmlns:tns="urn:weather"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            targetNamespace="urn:weather"
+            name="WeatherService">
+          <wsdl:types>
+            <xsd:schema targetNamespace="urn:weather">
+              <xsd:import namespace="urn:weather" schemaLocation="types.xsd"/>
+            </xsd:schema>
+          </wsdl:types>
+          <wsdl:message name="GetWeatherInput">
+            <wsdl:part name="parameters" type="tns:WeatherRequest"/>
+          </wsdl:message>
+          <wsdl:message name="GetWeatherOutput">
+            <wsdl:part name="parameters" type="tns:WeatherResponse"/>
+          </wsdl:message>
+          <wsdl:portType name="WeatherPortType">
+            <wsdl:operation name="GetWeather">
+              <wsdl:input message="tns:GetWeatherInput"/>
+              <wsdl:output message="tns:GetWeatherOutput"/>
+            </wsdl:operation>
+          </wsdl:portType>
+          <wsdl:binding name="WeatherBinding" type="tns:WeatherPortType">
+            <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+            <wsdl:operation name="GetWeather">
+              <soap:operation soapAction="urn:GetWeather" style="document"/>
+              <wsdl:input><soap:body use="literal"/></wsdl:input>
+              <wsdl:output><soap:body use="literal"/></wsdl:output>
+            </wsdl:operation>
+          </wsdl:binding>
+          <wsdl:service name="WeatherService">
+            <wsdl:port name="WeatherPort" binding="tns:WeatherBinding"/>
+          </wsdl:service>
+        </wsdl:definitions>
+        """
+
+        let xsdURL = tempDirectory.appendingPathComponent("types.xsd")
+        let wsdlURL = tempDirectory.appendingPathComponent("service.wsdl")
+        try xsd.write(to: xsdURL, atomically: true, encoding: .utf8)
+        try wsdl.write(to: wsdlURL, atomically: true, encoding: .utf8)
+
+        let configuration = CodeGenConfiguration(
+            wsdlPath: wsdlURL.path,
+            moduleName: "Weather",
+            outputMode: .build,
+            runtimeTargets: [.async],
+            generationScope: [.client],
+            targetSwiftVersion: SwiftLanguageVersion(major: 6, minor: 0)
+        )
+
+        let generator = CodeGenerator()
+        let artifacts = try generator.generate(configuration: configuration)
+        let generatedSource = artifacts.map(\.contents).joined(separator: "\n")
+
+        // Types from the imported XSD must appear in generated output
+        XCTAssertTrue(generatedSource.contains("WeatherRequest"), "Expected WeatherRequest type from imported XSD")
+        XCTAssertTrue(generatedSource.contains("WeatherResponse"), "Expected WeatherResponse type from imported XSD")
+        XCTAssertTrue(generatedSource.contains("city"), "Expected 'city' field from WeatherRequest")
+        XCTAssertTrue(generatedSource.contains("temperature"), "Expected 'temperature' field from WeatherResponse")
+        XCTAssertTrue(generatedSource.contains("WeatherServiceWeatherPortAsyncClient"))
     }
 
     private func makeWSDL(

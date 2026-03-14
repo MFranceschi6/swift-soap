@@ -39,7 +39,6 @@ import SwiftSOAPWSDL
 // `generatedTypeNames` (inout Set) tracks all emitted Swift type names across the
 // full build to prevent collisions.  `ensureUniqueSymbol` throws if a name would
 // be duplicated, surfacing the conflict as a diagnostics error.
-
 public struct CodeGenerationIRBuilder {
     public init() {}
 
@@ -51,7 +50,11 @@ public struct CodeGenerationIRBuilder {
         let portTypesByName = Dictionary(uniqueKeysWithValues: definition.portTypes.map { ($0.name, $0) })
         let bindingsByName = Dictionary(uniqueKeysWithValues: definition.bindings.map { ($0.name, $0) })
 
-        let messageTypes = try buildMessagePayloadTypes(messages: definition.messages, generatedTypeNames: &generatedTypeNames)
+        let messageTypes = try buildMessagePayloadTypes(
+            messages: definition.messages,
+            types: definition.types,
+            generatedTypeNames: &generatedTypeNames
+        )
         generatedTypes.append(contentsOf: messageTypes)
 
         let schemaTypes = try buildSchemaTypes(types: definition.types, generatedTypeNames: &generatedTypeNames)
@@ -80,21 +83,58 @@ public struct CodeGenerationIRBuilder {
 
     private func buildMessagePayloadTypes(
         messages: [WSDLDefinition.Message],
+        types: WSDLDefinition.Types,
         generatedTypeNames: inout Set<String>
     ) throws -> [GeneratedTypeIR] {
         return try messages.map { message in
             let payloadTypeName = sanitizeTypeName("\(message.name)Payload")
             try ensureUniqueSymbol(payloadTypeName, generatedTypeNames: &generatedTypeNames)
 
-            let fields = message.parts.map { part in
-                GeneratedTypeFieldIR(
-                    name: sanitizePropertyName(part.name),
+            var resolvedNamespaceURI: String?
+            let fields = message.parts.flatMap { part -> [GeneratedTypeFieldIR] in
+                // Doc/literal: part has elementName (element reference) instead of typeName.
+                // Resolve the element reference → inline the element's sequence fields.
+                if let elementLocalName = part.elementName {
+                    for schema in types.schemas {
+                        if let element = schema.elements.first(where: { $0.name == elementLocalName }),
+                           !element.inlineSequenceElements.isEmpty {
+                            resolvedNamespaceURI = schema.targetNamespace
+                            return element.inlineSequenceElements.map { seqElem in
+                                let swiftName = sanitizePropertyName(seqElem.name)
+                                let xmlNameValue = seqElem.name != swiftName ? seqElem.name : nil
+                                return GeneratedTypeFieldIR(
+                                    name: swiftName,
+                                    swiftTypeName: swiftTypeName(forQNameLocalName: seqElem.typeQName?.localName),
+                                    isOptional: true,
+                                    xmlName: xmlNameValue
+                                )
+                            }
+                        }
+                    }
+                }
+                // Fallback: RPC/literal — use typeName directly.
+                let swiftName = sanitizePropertyName(part.name)
+                let xmlNameValue = part.name != swiftName ? part.name : nil
+                return [GeneratedTypeFieldIR(
+                    name: swiftName,
                     swiftTypeName: swiftTypeName(forQNameLocalName: part.typeName),
-                    isOptional: true
-                )
+                    isOptional: true,
+                    xmlName: xmlNameValue
+                )]
             }
 
-            return GeneratedTypeIR(swiftTypeName: payloadTypeName, kind: .bodyPayload, fields: fields)
+            // Doc/literal single-part: the element local name is the XML root element name.
+            let xmlRootElementName: String? = message.parts.count == 1
+                ? message.parts[0].elementName
+                : nil
+
+            return GeneratedTypeIR(
+                swiftTypeName: payloadTypeName,
+                kind: .bodyPayload,
+                fields: fields,
+                xmlRootElementName: xmlRootElementName,
+                xmlRootElementNamespaceURI: xmlRootElementName != nil ? resolvedNamespaceURI : nil
+            )
         }
     }
 
@@ -305,10 +345,13 @@ public struct CodeGenerationIRBuilder {
                         swiftTypeName: faultTypeName,
                         kind: .faultDetailPayload,
                         fields: faultMessage.parts.map { part in
-                            GeneratedTypeFieldIR(
-                                name: sanitizePropertyName(part.name),
+                            let swiftName = sanitizePropertyName(part.name)
+                            let xmlNameValue = part.name != swiftName ? part.name : nil
+                            return GeneratedTypeFieldIR(
+                                name: swiftName,
                                 swiftTypeName: swiftTypeName(forQNameLocalName: part.typeName),
-                                isOptional: true
+                                isOptional: true,
+                                xmlName: xmlNameValue
                             )
                         }
                     )
@@ -437,7 +480,7 @@ public struct CodeGenerationIRBuilder {
             return "value"
         }
 
-        var result = tokens[0].lowercased()
+        var result = tokens[0].prefix(1).lowercased() + tokens[0].dropFirst()
         if tokens.count > 1 {
             for token in tokens.dropFirst() {
                 result += token.prefix(1).uppercased() + token.dropFirst().lowercased()

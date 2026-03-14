@@ -276,6 +276,10 @@ extension WSDLDefinition {
         public let minOccurs: Int?
         public let maxOccurs: String?
         public let nillable: Bool
+        /// Sequence elements of an inline anonymous `complexType` child, if present.
+        /// Non-empty only when the schema element has an anonymous nested complexType
+        /// (e.g. `<s:element name="Add"><s:complexType><s:sequence>…`).
+        public let inlineSequenceElements: [Element]
 
         public init(
             name: String,
@@ -283,7 +287,8 @@ extension WSDLDefinition {
             refQName: QName?,
             minOccurs: Int?,
             maxOccurs: String?,
-            nillable: Bool
+            nillable: Bool,
+            inlineSequenceElements: [Element] = []
         ) {
             self.name = name
             self.typeQName = typeQName
@@ -291,6 +296,7 @@ extension WSDLDefinition {
             self.minOccurs = minOccurs
             self.maxOccurs = maxOccurs
             self.nillable = nillable
+            self.inlineSequenceElements = inlineSequenceElements
         }
     }
 

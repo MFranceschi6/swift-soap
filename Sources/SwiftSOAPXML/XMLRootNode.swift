@@ -2,6 +2,12 @@ import Foundation
 
 public protocol XMLRootNode {
     static var xmlRootElementName: String { get }
+    /// The XML namespace URI for the root element, or `nil` for no namespace.
+    static var xmlRootElementNamespaceURI: String? { get }
+}
+
+public extension XMLRootNode {
+    static var xmlRootElementNamespaceURI: String? { nil }
 }
 
 enum XMLRootNameResolver {
@@ -25,6 +31,10 @@ enum XMLRootNameResolver {
             )
         }
         return makeXMLSafeName(configuredName)
+    }
+
+    static func implicitRootElementNamespaceURI<T>(for type: T.Type) -> String? {
+        (type as? XMLRootNode.Type)?.xmlRootElementNamespaceURI
     }
 
     static func fallbackRootElementName<T>(for type: T.Type) -> String {

@@ -89,17 +89,28 @@ public struct GeneratedTypeIR: Sendable, Equatable {
     public let fields: [GeneratedTypeFieldIR]
     /// Populated only for `kind == .enumeration`; raw string values of each enum case.
     public let enumerationCases: [String]
+    /// XML root element name for doc/literal element-reference payloads.
+    /// When non-nil the emitter generates an `XMLRootNode` conformance with this name,
+    /// overriding the default (Swift type name) used by the XML encoder.
+    public let xmlRootElementName: String?
+    /// XML namespace URI for the root element (e.g. the schema's `targetNamespace`).
+    /// When non-nil the emitter emits `xmlRootElementNamespaceURI` on the `XMLRootNode` conformance.
+    public let xmlRootElementNamespaceURI: String?
 
     public init(
         swiftTypeName: String,
         kind: GeneratedTypeKind,
         fields: [GeneratedTypeFieldIR],
-        enumerationCases: [String] = []
+        enumerationCases: [String] = [],
+        xmlRootElementName: String? = nil,
+        xmlRootElementNamespaceURI: String? = nil
     ) {
         self.swiftTypeName = swiftTypeName
         self.kind = kind
         self.fields = fields
         self.enumerationCases = enumerationCases
+        self.xmlRootElementName = xmlRootElementName
+        self.xmlRootElementNamespaceURI = xmlRootElementNamespaceURI
     }
 }
 

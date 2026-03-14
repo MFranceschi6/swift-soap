@@ -6,6 +6,68 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Added (Multi-file plugin output + XML namespace support for root elements)
+
+#### SPM build-tool plugin: multi-file output
+- `SwiftSOAPCodeGen` CLI gained a `--list-outputs` flag: runs the code-generation pipeline
+  in dry-run mode and prints a JSON array of the expected output file names, then exits
+  without writing files.
+- `Plugins/SwiftSOAPCodeGenPlugin61/Plugin.swift` (Swift 6.1+ URL-based API): uses
+  `Foundation.Process` in `createBuildCommands()` to probe the tool with `--list-outputs`
+  and declares each generated file individually as a build command output. Falls back to a
+  single stamp file with a diagnostic warning if the probe fails.
+- `Plugins/SwiftSOAPCodeGenPlugin/Plugin.swift` (Swift 5.6+ path-based API): same logic
+  using the legacy `codeGeneratorTool.path.string` API.
+- `CodeGenerator.writeBuildArtifacts`: switched from concatenating all generated types into
+  one stamp file to writing each `GeneratedSourceArtifact` as an individual `.swift` file,
+  matching the export-mode behaviour. SPM now compiles each generated file separately.
+
+#### XMLRootNode: namespace URI support
+- `XMLRootNode` protocol gained `static var xmlRootElementNamespaceURI: String? { get }`
+  with a default implementation returning `nil` (backwards-compatible).
+- `XMLRootNameResolver` gained `implicitRootElementNamespaceURI(for:)` static helper.
+- `XMLEncoder.encodeTreeImpl`: when `xmlRootElementNamespaceURI` is non-nil, the root
+  `_XMLTreeElementBox` is created with both a namespaced `XMLQualifiedName` **and** an
+  `XMLNamespaceDeclaration(prefix: nil, uri:)` (i.e. `xmlns="..."`) so the XML validator
+  does not raise `missingDefaultNamespaceBinding`.
+
+#### Codegen: namespace URI propagation to generated types
+- `GeneratedTypeIR` gained `xmlRootElementNamespaceURI: String?` (default `nil`).
+- `CodeGenerationIRBuilder.buildMessagePayloadTypes`: captures `schema.targetNamespace`
+  when resolving a doc/literal `<part element="..."/>` reference and stores it in
+  `GeneratedTypeIR.xmlRootElementNamespaceURI`.
+- `SwiftCodeEmitter.emitStruct`: emits
+  `public static var xmlRootElementNamespaceURI: String? { "..." }` inside generated
+  payload structs when the namespace URI is known.
+- All 6 golden snapshot fixtures regenerated to include the new property.
+
+### Added (Epic 9A — Typed String-backed enums in codegen + XSD import test + CalculatorClient example)
+
+#### Codegen: typed `String`-backed enums (no raw strings at call sites)
+- `SwiftCodeEmitter` now generates two `String`-backed enums per service/port:
+  - `{Service}{Port}OperationIdentifier: String` — one case per operation
+  - `{Service}{Port}OperationAction: String` — one case per operation with a soapAction
+- Operation contract properties reference enum cases instead of inline `rawValue:` strings:
+  `SOAPOperationIdentifier(CalculatorCalculatorSoapOperationIdentifier.add)`
+- `SOAPOperationIdentifier` and `SOAPAction` both gained a generic init
+  `init<E: RawRepresentable>(_ value: E) where E.RawValue == String` (Swift 5.4+).
+
+#### Tests
+- All 6 golden snapshot fixtures updated to the new enum format.
+- `doc-literal-soap11.golden` was in pre-Epic 9A format (1 failing test) — fixed.
+- Added `test_generate_withExternalXSDImport_resolvesTypesFromImportedSchema` confirming
+  `<xsd:import schemaLocation="...">` (local files) resolves types end-to-end.
+
+#### Examples: `Examples/CalculatorClient/`
+- Added standalone SPM executable example at `Examples/CalculatorClient/`.
+- Demonstrates end-to-end usage: URLSession transport → SOAP client → generated types.
+- `WSDL/calculator.wsdl` — RPC/literal WSDL with 4 operations (Add, Subtract, Multiply, Divide)
+  modelled after `http://www.dneonline.com/calculator.asmx`.
+- `Sources/CalculatorClient/Generated/CalculatorClient+GeneratedSOAP.swift` — committed
+  generated output (regenerate with `swift-soap-codegen.json` via the codegen CLI).
+- `URLSessionSOAPTransport.swift` — inline URLSession transport implementation.
+- `CalculatorDemo.swift` — `@main` entry point calling all four operations.
+
 ### Added (v1.0 documentation pass)
 
 #### README.md
