@@ -115,18 +115,20 @@ final class CodeGenGoldenSnapshotTests: XCTestCase {
         )
 
         for testCase in matrixCases {
-            let generatedSource = try generateSource(
+            let artifacts = try generateArtifacts(
                 for: testCase,
                 targetSwiftVersion: toolchain.codeGenTargetSwiftVersion
             )
             let targetName = targetName(for: testCase)
             let targetDirectory = fixtureRoot.appendingPathComponent("Sources/\(targetName)", isDirectory: true)
             try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
-            try generatedSource.write(
-                to: targetDirectory.appendingPathComponent("Generated.swift"),
-                atomically: true,
-                encoding: .utf8
-            )
+            for artifact in artifacts {
+                try artifact.contents.write(
+                    to: targetDirectory.appendingPathComponent(artifact.fileName),
+                    atomically: true,
+                    encoding: .utf8
+                )
+            }
         }
 
         try runProcess(
@@ -136,10 +138,10 @@ final class CodeGenGoldenSnapshotTests: XCTestCase {
         )
     }
 
-    private func generateSource(
+    private func generateArtifacts(
         for testCase: SoapMatrixCase,
         targetSwiftVersion: SwiftLanguageVersion = SwiftLanguageVersion(major: 6, minor: 0)
-    ) throws -> String {
+    ) throws -> [GeneratedSourceArtifact] {
         let wsdl = makeWSDL(
             soapNamespaceURI: testCase.namespaceURI,
             soapPrefix: testCase.prefix,
@@ -164,9 +166,15 @@ final class CodeGenGoldenSnapshotTests: XCTestCase {
             targetSwiftVersion: targetSwiftVersion
         )
 
-        let generator = CodeGenerator()
-        let artifacts = try generator.generate(configuration: configuration)
-        return try XCTUnwrap(artifacts.first?.contents)
+        return try CodeGenerator().generate(configuration: configuration)
+    }
+
+    private func generateSource(
+        for testCase: SoapMatrixCase,
+        targetSwiftVersion: SwiftLanguageVersion = SwiftLanguageVersion(major: 6, minor: 0)
+    ) throws -> String {
+        try generateArtifacts(for: testCase, targetSwiftVersion: targetSwiftVersion)
+            .map(\.contents).joined(separator: "\n")
     }
 
     private func makeCompileFixtureManifest(rootPath: String, toolsVersion: String) -> String {

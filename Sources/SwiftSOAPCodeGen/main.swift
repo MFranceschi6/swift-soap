@@ -1,11 +1,6 @@
 import Foundation
 import SwiftSOAPCodeGenCore
 
-private enum ExitCode {
-    static let success: Int32 = 0
-    static let failure: Int32 = 1
-}
-
 private func printUsage() {
     print("""
     SwiftSOAPCodeGen
@@ -26,6 +21,7 @@ private func printUsage() {
       --generation-scope <client,server>
       --target-swift <major.minor>
       --syntax-feature <name>=<true|false> (repeatable)
+      --list-outputs               Print expected output file names as JSON and exit (no files written)
       --help
     """)
 }
@@ -37,7 +33,11 @@ private func run() throws {
         return
     }
 
-    let request = try CodeGenCommandLineParser.parse(arguments: rawArguments)
+    // Strip --list-outputs before passing to the generic parser; it is handled separately below.
+    let listOutputsRequested = rawArguments.contains("--list-outputs")
+    let parserArguments = rawArguments.filter { $0 != "--list-outputs" }
+
+    let request = try CodeGenCommandLineParser.parse(arguments: parserArguments)
 
     guard let configPath = request.configPath else {
         throw CodeGenError(
@@ -72,6 +72,18 @@ private func run() throws {
 
     let generator = CodeGenerator()
     let artifacts = try generator.generate(configuration: configuration, packageRootPath: packageRootPath)
+
+    // --list-outputs: print generated file names as JSON and exit without writing.
+    // Used by the SPM build-tool plugin to enumerate output files before registering
+    // the build command, so that all generated .swift files are declared as outputs
+    // and are compiled by the Swift compiler.
+    if listOutputsRequested {
+        let fileNames = artifacts.map(\.fileName)
+        let jsonData = try JSONEncoder().encode(fileNames)
+        print(String(bytes: jsonData, encoding: .utf8) ?? "[]")
+        return
+    }
+
     try generator.writeArtifacts(artifacts, configuration: configuration, packageRootPath: packageRootPath)
 
     let generatedPaths = artifacts.map { $0.fileName }.joined(separator: ", ")
@@ -88,8 +100,8 @@ private func writeErrorToStandardError(_ message: String) {
 
 do {
     try run()
-    Foundation.exit(ExitCode.success)
+    Foundation.exit(0)
 } catch {
     writeErrorToStandardError(String(describing: error))
-    Foundation.exit(ExitCode.failure)
+    Foundation.exit(1)
 }

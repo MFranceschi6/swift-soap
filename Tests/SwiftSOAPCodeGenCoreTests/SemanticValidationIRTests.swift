@@ -71,7 +71,7 @@ final class SemanticValidationIRTests: XCTestCase {
             useTypedThrowsAnyError: false
         )
         let emitter = SwiftCodeEmitter()
-        let output = emitter.emit(ir: ir, syntaxProfile: profile)
+        let output = emitter.emit(ir: ir, syntaxProfile: profile).map(\.contents).joined(separator: "\n")
 
         XCTAssertTrue(output.contains("public enum Status: String, Codable, Sendable, Equatable {"))
         XCTAssertTrue(output.contains("case active"))
@@ -109,7 +109,7 @@ final class SemanticValidationIRTests: XCTestCase {
             useTypedThrowsAnyError: false
         )
         let emitter = SwiftCodeEmitter()
-        let output = emitter.emit(ir: ir, syntaxProfile: profile)
+        let output = emitter.emit(ir: ir, syntaxProfile: profile).map(\.contents).joined(separator: "\n")
 
         XCTAssertTrue(output.contains("enum CodingKeys: String, CodingKey {"))
         XCTAssertTrue(output.contains("case firstName = \"first-name\""))
@@ -149,7 +149,7 @@ final class SemanticValidationIRTests: XCTestCase {
             useTypedThrowsAnyError: false
         )
         let emitter = SwiftCodeEmitter()
-        let output = emitter.emit(ir: ir, syntaxProfile: profile)
+        let output = emitter.emit(ir: ir, syntaxProfile: profile).map(\.contents).joined(separator: "\n")
 
         XCTAssertTrue(output.contains("public func validate() throws {"))
     }
@@ -182,7 +182,7 @@ final class SemanticValidationIRTests: XCTestCase {
             useTypedThrowsAnyError: false
         )
         let emitter = SwiftCodeEmitter()
-        let output = emitter.emit(ir: ir, syntaxProfile: profile)
+        let output = emitter.emit(ir: ir, syntaxProfile: profile).map(\.contents).joined(separator: "\n")
 
         XCTAssertFalse(output.contains("public func validate() throws {"))
     }

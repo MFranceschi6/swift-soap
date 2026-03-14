@@ -269,13 +269,30 @@ extension WSDLDocumentParser {
         let nillable = normalized(elementNode.attribute(named: "nillable")) == "true" ||
             normalized(elementNode.attribute(named: "nillable")) == "1"
 
+        // Parse inline anonymous complexType children (e.g. doc/literal wrapper elements).
+        // These have no "type" attribute but contain a nested <complexType><sequence>...</sequence></complexType>.
+        let inlineSequenceElements: [WSDLDefinition.Element] = try elementNode.children()
+            .filter { $0.name == "complexType" }
+            .flatMap { complexTypeNode in
+                try complexTypeNode.children()
+                    .filter { $0.name == "sequence" }
+                    .flatMap { sequenceNode in
+                        try sequenceNode.children()
+                            .filter { $0.name == "element" }
+                            .map { child in
+                                try parseSchemaElement(child, namespaceMappings: namespaceMappings)
+                            }
+                    }
+            }
+
         return WSDLDefinition.Element(
             name: resolvedName,
             typeQName: typeQName,
             refQName: refQName,
             minOccurs: minOccurs,
             maxOccurs: maxOccurs,
-            nillable: nillable
+            nillable: nillable,
+            inlineSequenceElements: inlineSequenceElements
         )
     }
 

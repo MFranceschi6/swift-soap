@@ -200,7 +200,14 @@ public struct XMLEncoder: Sendable {
 
     private func encodeTreeImpl<T: Encodable>(_ value: T) throws -> XMLTreeDocument {
         let rootElementName = try resolveRootElementName(for: T.self)
-        let rootNode = _XMLTreeElementBox(name: XMLQualifiedName(localName: rootElementName))
+        let rootNamespaceURI = XMLRootNameResolver.implicitRootElementNamespaceURI(for: T.self)
+        let rootNamespaceDeclarations: [XMLNamespaceDeclaration] = rootNamespaceURI.map {
+            [XMLNamespaceDeclaration(prefix: nil, uri: $0)]
+        } ?? []
+        let rootNode = _XMLTreeElementBox(
+            name: XMLQualifiedName(localName: rootElementName, namespaceURI: rootNamespaceURI),
+            namespaceDeclarations: rootNamespaceDeclarations
+        )
         let options = _XMLEncoderOptions(configuration: configuration)
         let encoder = _XMLTreeEncoder(
             options: options,

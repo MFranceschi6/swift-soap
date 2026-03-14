@@ -9,7 +9,7 @@ public struct SwiftSyntaxEmitter: SwiftSourceEmitter {
         self.fallbackEmitter = fallbackEmitter
     }
 
-    public func emit(ir: SOAPCodeGenerationIR, syntaxProfile: CodeGenerationSyntaxProfile) -> String {
+    public func emit(ir: SOAPCodeGenerationIR, syntaxProfile: CodeGenerationSyntaxProfile) -> [GeneratedSourceArtifact] {
         // The semantic IR-to-AST migration can proceed incrementally while preserving stable output.
         fallbackEmitter.emit(ir: ir, syntaxProfile: syntaxProfile)
     }

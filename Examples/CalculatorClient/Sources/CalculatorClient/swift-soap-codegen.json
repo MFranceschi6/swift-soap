@@ -1,0 +1,9 @@
+{
+  "wsdlPath": "WSDL/calculator.wsdl",
+  "moduleName": "CalculatorClient",
+  "targetSwiftVersion": "6.0",
+  "outputMode": "build",
+  "buildOutputDirectory": ".build/swift-soap-codegen",
+  "runtimeTargets": ["async"],
+  "generationScope": ["client"]
+}
