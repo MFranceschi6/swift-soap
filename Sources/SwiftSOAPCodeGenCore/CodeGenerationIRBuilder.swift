@@ -1,5 +1,6 @@
 import Foundation
 import SwiftSOAPWSDL
+// swiftlint:disable file_length
 
 // MARK: - Architecture: WSDL → IR pipeline
 //
@@ -17,8 +18,9 @@ import SwiftSOAPWSDL
 //     │
 //     ├─ buildSchemaTypes           → one GeneratedTypeIR per <complexType> in <types>
 //     │    XSD sequence elements → required/optional fields (minOccurs drives optionality)
-//     │    XSD choice elements   → all optional fields (any-of semantics)
-//     │    XSD attributes        → XMLAttribute-annotated fields
+//     │    XSD choice groups     → optional fields + group metadata for validation
+//     │    XSD attributes        → XML attribute-mapped fields, including attributeGroup reuse
+//     │    XSD simpleContent     → text-backed field + attribute flattening
 //     │
 //     └─ buildServiceIR (per service)
 //          └─ buildPortIR (per port) → resolves binding → resolves portType
@@ -42,13 +44,23 @@ import SwiftSOAPWSDL
 public struct CodeGenerationIRBuilder {
     private struct ResolvedComplexTypeContent {
         var sequence: [WSDLDefinition.Element] = []
-        var choice: [WSDLDefinition.Element] = []
+        var choiceGroups: [WSDLDefinition.ChoiceGroup] = []
         var attributes: [WSDLDefinition.Attribute] = []
+    }
+
+    private struct ResolvedSimpleContent {
+        let valueTypeQName: WSDLDefinition.QName
+        var attributes: [WSDLDefinition.Attribute]
     }
 
     private struct SchemaGenerationArtifacts {
         let generatedProtocols: [GeneratedProtocolIR]
         let generatedTypes: [GeneratedTypeIR]
+    }
+
+    private struct GeneratedFieldArtifacts {
+        let fields: [GeneratedTypeFieldIR]
+        let choiceGroups: [GeneratedChoiceGroupIR]
     }
 
     private struct SchemaProtocolDescriptor {
@@ -58,6 +70,11 @@ public struct CodeGenerationIRBuilder {
     }
 
     private struct ComplexTypeKey: Hashable {
+        let name: String
+        let namespaceURI: String?
+    }
+
+    private struct AttributeGroupKey: Hashable {
         let name: String
         let namespaceURI: String?
     }
@@ -123,6 +140,7 @@ private extension CodeGenerationIRBuilder {
             try ensureUniqueSymbol(payloadTypeName, generatedTypeNames: &generatedTypeNames)
 
             var resolvedNamespaceURI: String?
+            var choiceGroups: [GeneratedChoiceGroupIR] = []
             let fields = try message.parts.flatMap { part -> [GeneratedTypeFieldIR] in
                 if let resolvedElement = findSchemaElement(
                     named: part.elementQName?.localName ?? part.elementName,
@@ -133,8 +151,9 @@ private extension CodeGenerationIRBuilder {
                         resolvedNamespaceURI = resolvedElement.namespaceURI
                     }
 
-                    if let payloadFields = try payloadFields(for: resolvedElement.element, types: types) {
-                        return payloadFields
+                    if let payloadArtifacts = try payloadFields(for: resolvedElement.element, types: types) {
+                        choiceGroups.append(contentsOf: payloadArtifacts.choiceGroups)
+                        return payloadArtifacts.fields
                     }
                 }
 
@@ -150,6 +169,7 @@ private extension CodeGenerationIRBuilder {
                 swiftTypeName: payloadTypeName,
                 kind: .bodyPayload,
                 fields: fields,
+                choiceGroups: choiceGroups,
                 xmlRootElementName: xmlRootElementName,
                 xmlRootElementNamespaceURI: xmlRootElementName != nil ? resolvedNamespaceURI : nil
             )
@@ -181,31 +201,40 @@ private extension CodeGenerationIRBuilder {
 
                 let schemaSwiftTypeName = sanitizeTypeName(complexType.name)
                 try ensureUniqueSymbol(schemaSwiftTypeName, generatedTypeNames: &generatedTypeNames)
-                var visitedTypeNames = Set<String>()
-                let resolvedContent = try resolveComplexTypeContent(
-                    complexType,
-                    types: types,
-                    visitedTypeNames: &visitedTypeNames
-                )
-                let sequenceFields = resolvedContent.sequence.enumerated().map { index, element in
-                    schemaField(for: element, types: types, isChoiceField: false, xmlOrder: index)
-                }
-                let choiceFields = resolvedContent.choice.enumerated().map { index, element in
-                    schemaField(
-                        for: element,
+                let fieldArtifacts: GeneratedFieldArtifacts
+                if complexType.simpleContentBaseQName != nil {
+                    var visitedTypeNames = Set<String>()
+                    let resolvedContent = try resolveSimpleContent(
+                        complexType,
                         types: types,
-                        isChoiceField: true,
-                        xmlOrder: sequenceFields.count + index
+                        visitedTypeNames: &visitedTypeNames
+                    )
+                    fieldArtifacts = buildSimpleContentFieldArtifacts(
+                        valueTypeQName: resolvedContent.valueTypeQName,
+                        attributes: resolvedContent.attributes
+                    )
+                } else {
+                    var visitedTypeNames = Set<String>()
+                    let resolvedContent = try resolveComplexTypeContent(
+                        complexType,
+                        types: types,
+                        visitedTypeNames: &visitedTypeNames
+                    )
+                    fieldArtifacts = buildFieldArtifacts(
+                        sequence: resolvedContent.sequence,
+                        choiceGroups: resolvedContent.choiceGroups,
+                        attributes: resolvedContent.attributes,
+                        types: types
                     )
                 }
-                let attributeFields = resolvedContent.attributes.map(attributeField(for:))
 
                 generatedTypes.append(
                     GeneratedTypeIR(
                         swiftTypeName: schemaSwiftTypeName,
                         kind: .schemaModel,
                         protocolConformances: protocolDescriptor.map { [$0.protocolName] } ?? [],
-                        fields: sequenceFields + choiceFields + attributeFields
+                        fields: fieldArtifacts.fields,
+                        choiceGroups: fieldArtifacts.choiceGroups
                     )
                 )
             }
@@ -231,6 +260,8 @@ private extension CodeGenerationIRBuilder {
                             name: "rawValue",
                             swiftTypeName: fieldTypeName,
                             isOptional: false,
+                            xmlFieldKind: .text,
+                            xmlOrder: 0,
                             constraints: constraints
                         )
                     ]
@@ -254,11 +285,14 @@ private extension CodeGenerationIRBuilder {
     private func payloadFields(
         for element: WSDLDefinition.Element,
         types: WSDLDefinition.Types
-    ) throws -> [GeneratedTypeFieldIR]? {
+    ) throws -> GeneratedFieldArtifacts? {
         if !element.inlineSequenceElements.isEmpty {
-            return element.inlineSequenceElements.enumerated().map { index, nestedElement in
-                schemaField(for: nestedElement, types: types, isChoiceField: false, xmlOrder: index)
-            }
+            return buildFieldArtifacts(
+                sequence: element.inlineSequenceElements,
+                choiceGroups: [],
+                attributes: [],
+                types: types
+            )
         }
 
         guard let typeQName = element.typeQName,
@@ -270,26 +304,93 @@ private extension CodeGenerationIRBuilder {
             return nil
         }
 
+        if complexType.simpleContentBaseQName != nil {
+            var visitedTypeNames = Set<String>()
+            let resolvedContent = try resolveSimpleContent(
+                complexType,
+                types: types,
+                visitedTypeNames: &visitedTypeNames
+            )
+            return buildSimpleContentFieldArtifacts(
+                valueTypeQName: resolvedContent.valueTypeQName,
+                attributes: resolvedContent.attributes
+            )
+        }
+
         var visitedTypeNames = Set<String>()
         let resolvedContent = try resolveComplexTypeContent(
             complexType,
             types: types,
             visitedTypeNames: &visitedTypeNames
         )
-        let sequenceFields = resolvedContent.sequence.enumerated().map { index, nestedElement in
-            schemaField(for: nestedElement, types: types, isChoiceField: false, xmlOrder: index)
-        }
-        let choiceFields = resolvedContent.choice.enumerated().map { index, nestedElement in
-            schemaField(
-                for: nestedElement,
-                types: types,
-                isChoiceField: true,
-                xmlOrder: sequenceFields.count + index
-            )
-        }
-        let attributeFields = resolvedContent.attributes.map(attributeField(for:))
+        return buildFieldArtifacts(
+            sequence: resolvedContent.sequence,
+            choiceGroups: resolvedContent.choiceGroups,
+            attributes: resolvedContent.attributes,
+            types: types
+        )
+    }
 
-        return sequenceFields + choiceFields + attributeFields
+    private func buildFieldArtifacts(
+        sequence: [WSDLDefinition.Element],
+        choiceGroups: [WSDLDefinition.ChoiceGroup],
+        attributes: [WSDLDefinition.Attribute],
+        types: WSDLDefinition.Types
+    ) -> GeneratedFieldArtifacts {
+        var fields: [GeneratedTypeFieldIR] = []
+        var emittedChoiceGroups: [GeneratedChoiceGroupIR] = []
+        var xmlOrder = 0
+
+        for element in sequence {
+            fields.append(schemaField(for: element, types: types, isChoiceField: false, xmlOrder: xmlOrder))
+            xmlOrder += 1
+        }
+
+        for choiceGroup in choiceGroups {
+            var groupFields: [GeneratedTypeFieldIR] = []
+            for element in choiceGroup.elements {
+                groupFields.append(schemaField(for: element, types: types, isChoiceField: true, xmlOrder: xmlOrder))
+                xmlOrder += 1
+            }
+
+            fields.append(contentsOf: groupFields)
+
+            if !groupFields.isEmpty {
+                let bounds = choiceGroupBounds(for: choiceGroup)
+                emittedChoiceGroups.append(
+                    GeneratedChoiceGroupIR(
+                        fieldNames: groupFields.map(\.name),
+                        minOccurs: bounds.minOccurs,
+                        maxOccurs: bounds.maxOccurs
+                    )
+                )
+            }
+        }
+
+        fields.append(contentsOf: attributes.map { attributeField(for: $0) })
+        return GeneratedFieldArtifacts(fields: fields, choiceGroups: emittedChoiceGroups)
+    }
+
+    private func buildSimpleContentFieldArtifacts(
+        valueTypeQName: WSDLDefinition.QName,
+        attributes: [WSDLDefinition.Attribute]
+    ) -> GeneratedFieldArtifacts {
+        let valueFieldName = simpleContentValueFieldName(for: attributes)
+        var fields = [
+            GeneratedTypeFieldIR(
+                name: valueFieldName,
+                swiftTypeName: swiftTypeName(forQNameLocalName: valueTypeQName.localName),
+                isOptional: false,
+                xmlFieldKind: .text,
+                xmlOrder: 0
+            )
+        ]
+
+        for (index, attribute) in attributes.enumerated() {
+            fields.append(attributeField(for: attribute, xmlOrder: index + 1))
+        }
+
+        return GeneratedFieldArtifacts(fields: fields, choiceGroups: [])
     }
 
     private func buildServiceIR(
@@ -502,6 +603,8 @@ private extension CodeGenerationIRBuilder {
         if let value = facets.length { result.append(FacetConstraintIR(kind: .length, value: String(value))) }
         if let value = facets.minInclusive { result.append(FacetConstraintIR(kind: .minInclusive, value: value)) }
         if let value = facets.maxInclusive { result.append(FacetConstraintIR(kind: .maxInclusive, value: value)) }
+        if let value = facets.minExclusive { result.append(FacetConstraintIR(kind: .minExclusive, value: value)) }
+        if let value = facets.maxExclusive { result.append(FacetConstraintIR(kind: .maxExclusive, value: value)) }
         if let value = facets.totalDigits { result.append(FacetConstraintIR(kind: .totalDigits, value: String(value))) }
         if let value = facets.fractionDigits { result.append(FacetConstraintIR(kind: .fractionDigits, value: String(value))) }
         return result
@@ -603,14 +706,19 @@ private extension CodeGenerationIRBuilder {
         )
     }
 
-    private func attributeField(for attribute: WSDLDefinition.Attribute) -> GeneratedTypeFieldIR {
+    private func attributeField(
+        for attribute: WSDLDefinition.Attribute,
+        xmlOrder: Int? = nil
+    ) -> GeneratedTypeFieldIR {
         let swiftName = sanitizePropertyName(attribute.name)
         let xmlNameValue = attribute.name != swiftName ? attribute.name : nil
         return GeneratedTypeFieldIR(
             name: swiftName,
             swiftTypeName: swiftTypeName(forQNameLocalName: attribute.typeQName?.localName),
             isOptional: attribute.use != "required",
-            xmlName: xmlNameValue
+            xmlFieldKind: .attribute,
+            xmlName: xmlNameValue,
+            xmlOrder: xmlOrder
         )
     }
 
@@ -658,6 +766,18 @@ private extension CodeGenerationIRBuilder {
         return OccurrenceBounds(minOccurs: minOccurs, maxOccurs: maxOccurs)
     }
 
+    private func choiceGroupBounds(for choiceGroup: WSDLDefinition.ChoiceGroup) -> OccurrenceBounds {
+        let minOccurs = choiceGroup.minOccurs ?? 1
+        let maxOccurs: Int?
+        if let rawMaxOccurs = choiceGroup.maxOccurs {
+            maxOccurs = rawMaxOccurs == "unbounded" ? nil : Int(rawMaxOccurs)
+        } else {
+            maxOccurs = 1
+        }
+
+        return OccurrenceBounds(minOccurs: minOccurs, maxOccurs: maxOccurs)
+    }
+
     private func resolveComplexTypeContent(
         _ complexType: WSDLDefinition.ComplexType,
         types: WSDLDefinition.Types,
@@ -692,9 +812,152 @@ private extension CodeGenerationIRBuilder {
         }
 
         content.sequence.append(contentsOf: complexType.sequence)
-        content.choice.append(contentsOf: complexType.choice)
-        content.attributes.append(contentsOf: complexType.attributes)
+        content.choiceGroups.append(contentsOf: complexType.choiceGroups)
+        content.attributes.append(contentsOf: try resolveDeclaredAttributes(for: complexType, types: types))
         return content
+    }
+
+    private func resolveSimpleContent(
+        _ complexType: WSDLDefinition.ComplexType,
+        types: WSDLDefinition.Types,
+        visitedTypeNames: inout Set<String>
+    ) throws -> ResolvedSimpleContent {
+        guard visitedTypeNames.insert(complexType.name).inserted else {
+            throw CodeGenError(
+                code: .invalidInput,
+                message: "Cyclic simpleContent extension hierarchy detected for '\(complexType.name)'."
+            )
+        }
+
+        defer { visitedTypeNames.remove(complexType.name) }
+
+        guard let baseQName = complexType.simpleContentBaseQName else {
+            throw CodeGenError(
+                code: .invalidInput,
+                message: "complexType '\(complexType.name)' does not declare simpleContent."
+            )
+        }
+
+        if let baseComplexType = findComplexType(
+            named: baseQName.localName,
+            namespaceURI: baseQName.namespaceURI,
+            in: types
+        ) {
+            guard baseComplexType.simpleContentBaseQName != nil else {
+                throw CodeGenError(
+                    code: .invalidInput,
+                    message: "simpleContent type '\(complexType.name)' extends non-simpleContent complexType '\(baseQName.rawValue)'."
+                )
+            }
+
+            var resolved = try resolveSimpleContent(
+                baseComplexType,
+                types: types,
+                visitedTypeNames: &visitedTypeNames
+            )
+            resolved.attributes.append(contentsOf: try resolveDeclaredAttributes(for: complexType, types: types))
+            return resolved
+        }
+
+        return ResolvedSimpleContent(
+            valueTypeQName: baseQName,
+            attributes: try resolveDeclaredAttributes(for: complexType, types: types)
+        )
+    }
+
+    private func resolveDeclaredAttributes(
+        for complexType: WSDLDefinition.ComplexType,
+        types: WSDLDefinition.Types
+    ) throws -> [WSDLDefinition.Attribute] {
+        var resolvedAttributes = complexType.attributes
+        for attributeRef in complexType.attributeRefs {
+            resolvedAttributes.append(try resolveAttributeReference(attributeRef, types: types))
+        }
+        for attributeGroupRef in complexType.attributeGroupRefs {
+            var visitedGroupKeys = Set<AttributeGroupKey>()
+            resolvedAttributes.append(
+                contentsOf: try resolveAttributeGroupAttributes(
+                    attributeGroupRef,
+                    types: types,
+                    visitedGroupKeys: &visitedGroupKeys
+                )
+            )
+        }
+        return resolvedAttributes
+    }
+
+    private func resolveAttributeReference(
+        _ attributeReference: WSDLDefinition.AttributeReference,
+        types: WSDLDefinition.Types
+    ) throws -> WSDLDefinition.Attribute {
+        guard let attributeDefinition = findAttributeDefinition(
+            named: attributeReference.refQName.localName,
+            namespaceURI: attributeReference.refQName.namespaceURI,
+            in: types
+        ) else {
+            throw CodeGenError(
+                code: .unresolvedReference,
+                message: "attribute reference '\(attributeReference.refQName.rawValue)' could not be resolved."
+            )
+        }
+
+        return WSDLDefinition.Attribute(
+            name: attributeDefinition.name,
+            typeQName: attributeDefinition.typeQName,
+            use: attributeReference.use ?? attributeDefinition.use
+        )
+    }
+
+    private func resolveAttributeGroupAttributes(
+        _ qName: WSDLDefinition.QName,
+        types: WSDLDefinition.Types,
+        visitedGroupKeys: inout Set<AttributeGroupKey>
+    ) throws -> [WSDLDefinition.Attribute] {
+        guard let attributeGroupKey = findAttributeGroupKey(
+            named: qName.localName,
+            namespaceURI: qName.namespaceURI,
+            in: types
+        ) else {
+            throw CodeGenError(
+                code: .unresolvedReference,
+                message: "attributeGroup reference '\(qName.rawValue)' could not be resolved."
+            )
+        }
+
+        guard visitedGroupKeys.insert(attributeGroupKey).inserted else {
+            throw CodeGenError(
+                code: .invalidInput,
+                message: "Cyclic attributeGroup reference detected for '\(attributeGroupKey.name)'."
+            )
+        }
+
+        defer { visitedGroupKeys.remove(attributeGroupKey) }
+
+        guard let attributeGroup = findAttributeGroup(
+            named: attributeGroupKey.name,
+            namespaceURI: attributeGroupKey.namespaceURI,
+            in: types
+        ) else {
+            throw CodeGenError(
+                code: .unresolvedReference,
+                message: "attributeGroup reference '\(qName.rawValue)' could not be resolved."
+            )
+        }
+
+        var resolvedAttributes = attributeGroup.attributes
+        for attributeRef in attributeGroup.attributeRefs {
+            resolvedAttributes.append(try resolveAttributeReference(attributeRef, types: types))
+        }
+        for nestedReference in attributeGroup.attributeGroupRefs {
+            resolvedAttributes.append(
+                contentsOf: try resolveAttributeGroupAttributes(
+                    nestedReference,
+                    types: types,
+                    visitedGroupKeys: &visitedGroupKeys
+                )
+            )
+        }
+        return resolvedAttributes
     }
 
     private func findSchemaElement(
@@ -760,6 +1023,80 @@ private extension CodeGenerationIRBuilder {
         return nil
     }
 
+    private func findAttributeGroup(
+        named localName: String?,
+        namespaceURI: String?,
+        in types: WSDLDefinition.Types
+    ) -> WSDLDefinition.AttributeGroup? {
+        guard let localName else {
+            return nil
+        }
+
+        if let namespaceURI {
+            for schema in types.schemas where schema.targetNamespace == namespaceURI {
+                if let attributeGroup = schema.attributeGroups.first(where: { $0.name == localName }) {
+                    return attributeGroup
+                }
+            }
+        }
+
+        for schema in types.schemas {
+            if let attributeGroup = schema.attributeGroups.first(where: { $0.name == localName }) {
+                return attributeGroup
+            }
+        }
+
+        return nil
+    }
+
+    private func findAttributeDefinition(
+        named localName: String?,
+        namespaceURI: String?,
+        in types: WSDLDefinition.Types
+    ) -> WSDLDefinition.Attribute? {
+        guard let localName else {
+            return nil
+        }
+
+        if let namespaceURI {
+            for schema in types.schemas where schema.targetNamespace == namespaceURI {
+                if let attributeDefinition = schema.attributeDefinitions.first(where: { $0.name == localName }) {
+                    return attributeDefinition
+                }
+            }
+        }
+
+        for schema in types.schemas {
+            if let attributeDefinition = schema.attributeDefinitions.first(where: { $0.name == localName }) {
+                return attributeDefinition
+            }
+        }
+
+        return nil
+    }
+
+    private func findAttributeGroupKey(
+        named localName: String,
+        namespaceURI: String?,
+        in types: WSDLDefinition.Types
+    ) -> AttributeGroupKey? {
+        if let namespaceURI {
+            for schema in types.schemas where schema.targetNamespace == namespaceURI {
+                if schema.attributeGroups.contains(where: { $0.name == localName }) {
+                    return AttributeGroupKey(name: localName, namespaceURI: schema.targetNamespace)
+                }
+            }
+        }
+
+        for schema in types.schemas {
+            if schema.attributeGroups.contains(where: { $0.name == localName }) {
+                return AttributeGroupKey(name: localName, namespaceURI: schema.targetNamespace)
+            }
+        }
+
+        return nil
+    }
+
     private func findComplexTypeKey(
         named localName: String,
         namespaceURI: String?,
@@ -789,25 +1126,16 @@ private extension CodeGenerationIRBuilder {
 
         for schema in types.schemas {
             for complexType in schema.complexTypes {
-                guard let baseQName = complexType.baseQName else {
+                guard let baseQName = try hierarchyBaseQName(for: complexType, types: types) else {
                     continue
                 }
 
                 let complexTypeKey = ComplexTypeKey(name: complexType.name, namespaceURI: schema.targetNamespace)
                 hierarchyKeys.insert(complexTypeKey)
 
-                guard let baseTypeKey = findComplexTypeKey(
-                    named: baseQName.localName,
-                    namespaceURI: baseQName.namespaceURI,
-                    in: types
-                ) else {
-                    throw CodeGenError(
-                        code: .unresolvedReference,
-                        message: "complexType '\(complexType.name)' extends unknown base type '\(baseQName.rawValue)'."
-                    )
-                }
-
-                hierarchyKeys.insert(baseTypeKey)
+                hierarchyKeys.insert(
+                    try findRequiredComplexTypeKey(baseQName, types: types, context: complexType.name)
+                )
             }
         }
 
@@ -820,47 +1148,106 @@ private extension CodeGenerationIRBuilder {
                     continue
                 }
 
+                let baseTypeKey = try hierarchyBaseQName(for: complexType, types: types).map {
+                    try findRequiredComplexTypeKey($0, types: types, context: complexType.name)
+                }
                 let inheritedProtocolNames: [String]
-                if let baseQName = complexType.baseQName {
-                    guard let baseTypeKey = findComplexTypeKey(
-                        named: baseQName.localName,
-                        namespaceURI: baseQName.namespaceURI,
-                        in: types
-                    ) else {
-                        throw CodeGenError(
-                            code: .unresolvedReference,
-                            message: "complexType '\(complexType.name)' extends unknown base type '\(baseQName.rawValue)'."
-                        )
-                    }
-
-                    inheritedProtocolNames = hierarchyKeys.contains(baseTypeKey)
-                        ? [generatedProtocolName(forTypeName: sanitizeTypeName(baseQName.localName))]
-                        : []
+                if let baseTypeKey, hierarchyKeys.contains(baseTypeKey) {
+                    inheritedProtocolNames = [generatedProtocolName(forTypeName: sanitizeTypeName(baseTypeKey.name))]
                 } else {
                     inheritedProtocolNames = []
                 }
 
-                let declaredSequenceFields = complexType.sequence.enumerated().map { index, element in
-                    schemaField(for: element, types: types, isChoiceField: false, xmlOrder: index)
-                }
-                let declaredChoiceFields = complexType.choice.enumerated().map { index, element in
-                    schemaField(
-                        for: element,
-                        types: types,
-                        isChoiceField: true,
-                        xmlOrder: declaredSequenceFields.count + index
+                let declaredFieldArtifacts: GeneratedFieldArtifacts
+                let declaredAttributes = try resolveDeclaredAttributes(for: complexType, types: types)
+                if let simpleContentBaseQName = complexType.simpleContentBaseQName {
+                    if baseTypeKey != nil {
+                        let fields = declaredAttributes.enumerated().map { index, attribute in
+                            attributeField(for: attribute, xmlOrder: index)
+                        }
+                        declaredFieldArtifacts = GeneratedFieldArtifacts(fields: fields, choiceGroups: [])
+                    } else {
+                        declaredFieldArtifacts = buildSimpleContentFieldArtifacts(
+                            valueTypeQName: simpleContentBaseQName,
+                            attributes: declaredAttributes
+                        )
+                    }
+                } else {
+                    declaredFieldArtifacts = buildFieldArtifacts(
+                        sequence: complexType.sequence,
+                        choiceGroups: complexType.choiceGroups,
+                        attributes: declaredAttributes,
+                        types: types
                     )
                 }
-                let declaredAttributeFields = complexType.attributes.map(attributeField(for:))
 
                 descriptors[complexTypeKey] = SchemaProtocolDescriptor(
                     protocolName: generatedProtocolName(forTypeName: sanitizeTypeName(complexType.name)),
                     inheritedProtocolNames: inheritedProtocolNames,
-                    fields: declaredSequenceFields + declaredChoiceFields + declaredAttributeFields
+                    fields: declaredFieldArtifacts.fields
                 )
             }
         }
 
         return descriptors
+    }
+
+    private func hierarchyBaseQName(
+        for complexType: WSDLDefinition.ComplexType,
+        types: WSDLDefinition.Types
+    ) throws -> WSDLDefinition.QName? {
+        if let baseQName = complexType.baseQName {
+            return baseQName
+        }
+
+        guard let simpleContentBaseQName = complexType.simpleContentBaseQName else {
+            return nil
+        }
+
+        guard let baseComplexType = findComplexType(
+            named: simpleContentBaseQName.localName,
+            namespaceURI: simpleContentBaseQName.namespaceURI,
+            in: types
+        ) else {
+            return nil
+        }
+
+        guard baseComplexType.simpleContentBaseQName != nil else {
+            throw CodeGenError(
+                code: .invalidInput,
+                message: "simpleContent type '\(complexType.name)' extends non-simpleContent complexType '\(simpleContentBaseQName.rawValue)'."
+            )
+        }
+
+        return simpleContentBaseQName
+    }
+
+    private func findRequiredComplexTypeKey(
+        _ qName: WSDLDefinition.QName,
+        types: WSDLDefinition.Types,
+        context: String
+    ) throws -> ComplexTypeKey {
+        guard let baseTypeKey = findComplexTypeKey(
+            named: qName.localName,
+            namespaceURI: qName.namespaceURI,
+            in: types
+        ) else {
+            throw CodeGenError(
+                code: .unresolvedReference,
+                message: "complexType '\(context)' extends unknown base type '\(qName.rawValue)'."
+            )
+        }
+
+        return baseTypeKey
+    }
+
+    private func simpleContentValueFieldName(for attributes: [WSDLDefinition.Attribute]) -> String {
+        let reservedNames = Set(attributes.map { sanitizePropertyName($0.name) })
+        for candidate in ["value", "textValue", "contentValue"] {
+            if reservedNames.contains(candidate) == false {
+                return candidate
+            }
+        }
+        return "value"
     }
 }

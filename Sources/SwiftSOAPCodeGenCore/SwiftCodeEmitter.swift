@@ -1,6 +1,6 @@
 import Foundation
 // swiftlint:disable:next blanket_disable_command
-// swiftlint:disable line_length
+// swiftlint:disable file_length line_length
 
 public struct SwiftCodeEmitter: SwiftSourceEmitter {
     public init() {}
@@ -19,7 +19,11 @@ public struct SwiftCodeEmitter: SwiftSourceEmitter {
         ))
 
         artifacts.append(contentsOf: emitProtocolArtifacts(ir: ir, fileHeader: fileHeader))
-        artifacts.append(contentsOf: emitTypeArtifacts(ir: ir, fileHeader: fileHeader))
+        artifacts.append(contentsOf: emitTypeArtifacts(
+            ir: ir,
+            fileHeader: fileHeader,
+            syntaxProfile: syntaxProfile
+        ))
         artifacts.append(contentsOf: emitOperationsArtifacts(ir: ir, fileHeader: fileHeader))
         artifacts.append(contentsOf: emitClientArtifacts(ir: ir, fileHeader: fileHeader, syntaxProfile: syntaxProfile))
         artifacts.append(contentsOf: emitServerArtifacts(ir: ir, fileHeader: fileHeader, syntaxProfile: syntaxProfile))
@@ -47,14 +51,22 @@ private extension SwiftCodeEmitter {
         }
     }
 
-    func emitTypeArtifacts(ir: SOAPCodeGenerationIR, fileHeader: String) -> [GeneratedSourceArtifact] {
+    func emitTypeArtifacts(
+        ir: SOAPCodeGenerationIR,
+        fileHeader: String,
+        syntaxProfile: CodeGenerationSyntaxProfile
+    ) -> [GeneratedSourceArtifact] {
         ir.generatedTypes.map { generatedType in
             var lines: [String] = []
-            lines.append(contentsOf: baseImports(forType: generatedType))
+            lines.append(contentsOf: baseImports(forType: generatedType, syntaxProfile: syntaxProfile))
             lines.append("")
             lines.append(fileHeader)
             lines.append("")
-            lines.append(contentsOf: emitType(generatedType, validationProfile: ir.validationProfile))
+            lines.append(contentsOf: emitType(
+                generatedType,
+                validationProfile: ir.validationProfile,
+                syntaxProfile: syntaxProfile
+            ))
             lines.append("")
             return GeneratedSourceArtifact(
                 fileName: "\(generatedType.swiftTypeName).swift",
@@ -211,10 +223,19 @@ private extension SwiftCodeEmitter {
         ["import Foundation"]
     }
 
-    func baseImports(forType generatedType: GeneratedTypeIR) -> [String] {
+    func baseImports(
+        forType generatedType: GeneratedTypeIR,
+        syntaxProfile: CodeGenerationSyntaxProfile
+    ) -> [String] {
         var imports = ["import Foundation", "import SwiftSOAPCore"]
-        if generatedType.xmlRootElementName != nil {
+        if generatedType.xmlRootElementName != nil || generatedType.fields.contains(where: { $0.xmlFieldKind == .attribute }) {
             imports.append("import SwiftSOAPXML")
+        }
+        if shouldUseXMLFieldCodingMacros(
+            for: generatedType.fields,
+            syntaxProfile: syntaxProfile
+        ) {
+            imports.append("import SwiftSOAPXMLMacros")
         }
         return imports
     }
@@ -228,12 +249,7 @@ private extension SwiftCodeEmitter {
         let inheritedProtocols = generatedProtocol.inheritedProtocolNames.isEmpty
             ? ["Sendable"]
             : generatedProtocol.inheritedProtocolNames
-        let orderedFields = generatedProtocol.fields.sorted { lhs, rhs in
-            switch (lhs.xmlOrder, rhs.xmlOrder) {
-            case let (lhsOrder?, rhsOrder?): return lhsOrder < rhsOrder
-            default: return false
-            }
-        }
+        let orderedFields = orderedFields(from: generatedProtocol.fields)
 
         lines.append("public protocol \(generatedProtocol.swiftTypeName): \(inheritedProtocols.joined(separator: ", ")) {")
         for field in orderedFields {
@@ -244,34 +260,44 @@ private extension SwiftCodeEmitter {
         return lines
     }
 
-    func emitType(_ generatedType: GeneratedTypeIR, validationProfile: ValidationProfile) -> [String] {
+    func emitType(
+        _ generatedType: GeneratedTypeIR,
+        validationProfile: ValidationProfile,
+        syntaxProfile: CodeGenerationSyntaxProfile
+    ) -> [String] {
         switch generatedType.kind {
         case .bodyPayload:
             return emitStruct(
                 name: generatedType.swiftTypeName,
                 protocols: ["SOAPBodyPayload", "Equatable"] + generatedType.protocolConformances,
                 fields: generatedType.fields,
+                choiceGroups: generatedType.choiceGroups,
                 xmlRootElementName: generatedType.xmlRootElementName,
                 xmlRootElementNamespaceURI: generatedType.xmlRootElementNamespaceURI,
-                validationProfile: validationProfile
+                validationProfile: validationProfile,
+                syntaxProfile: syntaxProfile
             )
         case .faultDetailPayload:
             return emitStruct(
                 name: generatedType.swiftTypeName,
                 protocols: ["SOAPFaultDetailPayload", "Equatable"] + generatedType.protocolConformances,
                 fields: generatedType.fields,
+                choiceGroups: generatedType.choiceGroups,
                 xmlRootElementName: nil,
                 xmlRootElementNamespaceURI: nil,
-                validationProfile: validationProfile
+                validationProfile: validationProfile,
+                syntaxProfile: syntaxProfile
             )
         case .schemaModel:
             return emitStruct(
                 name: generatedType.swiftTypeName,
                 protocols: ["Codable", "Sendable", "Equatable"] + generatedType.protocolConformances,
                 fields: generatedType.fields,
+                choiceGroups: generatedType.choiceGroups,
                 xmlRootElementName: nil,
                 xmlRootElementNamespaceURI: nil,
-                validationProfile: validationProfile
+                validationProfile: validationProfile,
+                syntaxProfile: syntaxProfile
             )
         case .enumeration:
             return emitEnumType(generatedType)
@@ -298,28 +324,35 @@ private extension SwiftCodeEmitter {
         name: String,
         protocols: [String],
         fields: [GeneratedTypeFieldIR],
+        choiceGroups: [GeneratedChoiceGroupIR],
         xmlRootElementName: String?,
         xmlRootElementNamespaceURI: String?,
-        validationProfile: ValidationProfile
+        validationProfile: ValidationProfile,
+        syntaxProfile: CodeGenerationSyntaxProfile
     ) -> [String] {
         var lines: [String] = []
         var conformances = protocols
+        let useXMLFieldCodingMacros = shouldUseXMLFieldCodingMacros(
+            for: fields,
+            syntaxProfile: syntaxProfile
+        )
         if xmlRootElementName != nil {
             conformances.append("XMLRootNode")
         }
 
-        let orderedFields = fields.sorted { lhs, rhs in
-            switch (lhs.xmlOrder, rhs.xmlOrder) {
-            case let (lhsOrder?, rhsOrder?): return lhsOrder < rhsOrder
-            default: return false
-            }
-        }
+        let orderedFields = orderedFields(from: fields)
+        let textField = orderedFields.first(where: { $0.xmlFieldKind == .text })
+        let keyedFields = orderedFields.filter { $0.xmlFieldKind != .text }
 
-        let needsCodingKeys = orderedFields.contains { field in
+        let needsCodingKeys = keyedFields.contains { field in
             guard let xmlName = field.xmlName else { return false }
             return xmlName != field.name
         }
+        let shouldEmitCodingKeys = !keyedFields.isEmpty && (textField != nil || needsCodingKeys)
 
+        if useXMLFieldCodingMacros {
+            lines.append("@XMLCodable")
+        }
         lines.append("public struct \(name): \(conformances.joined(separator: ", ")) {")
 
         if let rootName = xmlRootElementName {
@@ -338,13 +371,16 @@ private extension SwiftCodeEmitter {
 
         for field in orderedFields {
             let optionalSuffix = field.isOptional ? "?" : ""
+            if field.xmlFieldKind == .attribute {
+                lines.append("    \(xmlAttributeAnnotation(useMacros: useXMLFieldCodingMacros))")
+            }
             lines.append("    public var \(field.name): \(field.swiftTypeName)\(optionalSuffix)")
         }
 
-        if needsCodingKeys {
+        if shouldEmitCodingKeys {
             lines.append("")
             lines.append("    public enum CodingKeys: String, CodingKey {")
-            for field in orderedFields {
+            for field in keyedFields {
                 let xmlName = field.xmlName ?? field.name
                 if xmlName != field.name {
                     lines.append("        case \(field.name) = \"\(xmlName)\"")
@@ -368,9 +404,20 @@ private extension SwiftCodeEmitter {
         }
         lines.append("    }")
 
+        if let textField {
+            lines.append(contentsOf: emitTextBackedCodable(
+                textField: textField,
+                keyedFields: keyedFields
+            ))
+        }
+
         if validationProfile == .strict {
             let constrainedFields = orderedFields.filter { hasValidationRules(field: $0) }
-            if !constrainedFields.isEmpty {
+            let fieldsByName = Dictionary(uniqueKeysWithValues: orderedFields.map { ($0.name, $0) })
+            let validatableChoiceGroups = choiceGroups.filter { choiceGroup in
+                choiceGroup.fieldNames.allSatisfy { fieldsByName[$0] != nil }
+            }
+            if !constrainedFields.isEmpty || !validatableChoiceGroups.isEmpty {
                 lines.append("")
                 lines.append("    /// Validates field constraints derived from XSD facets and occurrence bounds.")
                 lines.append("    /// - Throws: `SOAPSemanticValidationError` on constraint violation.")
@@ -378,12 +425,107 @@ private extension SwiftCodeEmitter {
                 for field in constrainedFields {
                     lines.append(contentsOf: emitFieldValidation(field: field))
                 }
+                for (index, choiceGroup) in validatableChoiceGroups.enumerated() {
+                    lines.append(contentsOf: emitChoiceGroupValidation(
+                        choiceGroup: choiceGroup,
+                        groupIndex: index,
+                        fieldsByName: fieldsByName
+                    ))
+                }
                 lines.append("    }")
             }
         }
 
         lines.append("}")
         return lines
+    }
+
+    func shouldUseXMLFieldCodingMacros(
+        for fields: [GeneratedTypeFieldIR],
+        syntaxProfile: CodeGenerationSyntaxProfile
+    ) -> Bool {
+        fields.contains(where: { $0.xmlFieldKind == .attribute }) &&
+            syntaxProfile.targetSwiftVersion >= SwiftLanguageVersion(major: 5, minor: 9)
+    }
+
+    func xmlAttributeAnnotation(useMacros: Bool) -> String {
+        useMacros ? "@XMLAttribute" : "@SwiftSOAPXML.XMLAttribute"
+    }
+
+    func emitTextBackedCodable(
+        textField: GeneratedTypeFieldIR,
+        keyedFields: [GeneratedTypeFieldIR]
+    ) -> [String] {
+        var lines: [String] = []
+
+        lines.append("")
+        lines.append("    public init(from decoder: Decoder) throws {")
+        if !keyedFields.isEmpty {
+            lines.append("        let container = try decoder.container(keyedBy: CodingKeys.self)")
+            for field in keyedFields {
+                if field.isOptional {
+                    lines.append("        self.\(field.name) = try container.decodeIfPresent(\(field.swiftTypeName).self, forKey: .\(field.name))")
+                } else {
+                    lines.append("        self.\(field.name) = try container.decode(\(field.swiftTypeName).self, forKey: .\(field.name))")
+                }
+            }
+        }
+        lines.append("        let valueContainer = try decoder.singleValueContainer()")
+        if textField.isOptional {
+            lines.append("        if valueContainer.decodeNil() {")
+            lines.append("            self.\(textField.name) = nil")
+            lines.append("        } else {")
+            lines.append("            self.\(textField.name) = try valueContainer.decode(\(textField.swiftTypeName).self)")
+            lines.append("        }")
+        } else {
+            lines.append("        self.\(textField.name) = try valueContainer.decode(\(textField.swiftTypeName).self)")
+        }
+        lines.append("    }")
+        lines.append("")
+        lines.append("    public func encode(to encoder: Encoder) throws {")
+        if !keyedFields.isEmpty {
+            lines.append("        var container = encoder.container(keyedBy: CodingKeys.self)")
+            for field in keyedFields {
+                if field.isOptional {
+                    lines.append("        try container.encodeIfPresent(\(field.name), forKey: .\(field.name))")
+                } else {
+                    lines.append("        try container.encode(\(field.name), forKey: .\(field.name))")
+                }
+            }
+        }
+        lines.append("        var valueContainer = encoder.singleValueContainer()")
+        if textField.isOptional {
+            lines.append("        if let value = \(textField.name) {")
+            lines.append("            try valueContainer.encode(value)")
+            lines.append("        } else {")
+            lines.append("            try valueContainer.encodeNil()")
+            lines.append("        }")
+        } else {
+            lines.append("        try valueContainer.encode(\(textField.name))")
+        }
+        lines.append("    }")
+
+        return lines
+    }
+
+    func orderedFields(from fields: [GeneratedTypeFieldIR]) -> [GeneratedTypeFieldIR] {
+        fields.enumerated().sorted { lhs, rhs in
+            switch (lhs.element.xmlOrder, rhs.element.xmlOrder) {
+            case let (lhsOrder?, rhsOrder?):
+                if lhsOrder != rhsOrder {
+                    return lhsOrder < rhsOrder
+                }
+            case (.some, nil):
+                return true
+            case (nil, .some):
+                return false
+            case (nil, nil):
+                break
+            }
+
+            return lhs.offset < rhs.offset
+        }
+        .map(\.element)
     }
 
     func emitFieldValidation(field: GeneratedTypeFieldIR) -> [String] {
@@ -417,8 +559,42 @@ private extension SwiftCodeEmitter {
                 lines.append("        if (try? NSRegularExpression(pattern: \"\(constraint.value)\"))?.firstMatch(in: \(src), range: NSRange(\(src).startIndex..., in: \(src))) == nil {")
                 lines.append("            throw SOAPSemanticValidationError(field: \"\(field.name)\", code: \"[CG_SEMANTIC_004]\", message: \"Value does not match pattern \\\"\(constraint.value)\\\".\")")
                 lines.append("        }")
-            default:
-                break
+            case .minInclusive:
+                lines.append(contentsOf: emitNumericRangeValidation(
+                    field: field,
+                    invalidIf: "<",
+                    threshold: constraint.value,
+                    diagnosticCode: "[CG_SEMANTIC_008]",
+                    message: "Value is smaller than minInclusive \(constraint.value)."
+                ))
+            case .maxInclusive:
+                lines.append(contentsOf: emitNumericRangeValidation(
+                    field: field,
+                    invalidIf: ">",
+                    threshold: constraint.value,
+                    diagnosticCode: "[CG_SEMANTIC_009]",
+                    message: "Value exceeds maxInclusive \(constraint.value)."
+                ))
+            case .minExclusive:
+                lines.append(contentsOf: emitNumericRangeValidation(
+                    field: field,
+                    invalidIf: "<=",
+                    threshold: constraint.value,
+                    diagnosticCode: "[CG_SEMANTIC_014]",
+                    message: "Value must be greater than minExclusive \(constraint.value)."
+                ))
+            case .maxExclusive:
+                lines.append(contentsOf: emitNumericRangeValidation(
+                    field: field,
+                    invalidIf: ">=",
+                    threshold: constraint.value,
+                    diagnosticCode: "[CG_SEMANTIC_015]",
+                    message: "Value must be smaller than maxExclusive \(constraint.value)."
+                ))
+            case .totalDigits:
+                lines.append(contentsOf: emitTotalDigitsValidation(field: field, constraintValue: constraint.value))
+            case .fractionDigits:
+                lines.append(contentsOf: emitFractionDigitsValidation(field: field, constraintValue: constraint.value))
             }
         }
         return lines
@@ -426,6 +602,43 @@ private extension SwiftCodeEmitter {
 
     func hasValidationRules(field: GeneratedTypeFieldIR) -> Bool {
         !field.constraints.isEmpty || field.minOccurs != nil || field.maxOccurs != nil
+    }
+
+    func emitChoiceGroupValidation(
+        choiceGroup: GeneratedChoiceGroupIR,
+        groupIndex: Int,
+        fieldsByName: [String: GeneratedTypeFieldIR]
+    ) -> [String] {
+        guard choiceGroup.maxOccurs == 1 else {
+            return []
+        }
+
+        let selectionTerms = choiceGroup.fieldNames.compactMap { fieldName -> String? in
+            guard let field = fieldsByName[fieldName] else {
+                return nil
+            }
+            return choiceSelectionCountExpression(for: field)
+        }
+        guard !selectionTerms.isEmpty else {
+            return []
+        }
+
+        let selectionCountName = "choiceGroup\(groupIndex)SelectionCount"
+        let fieldLabel = choiceGroup.fieldNames.joined(separator: ", ")
+        var lines = [
+            "        let \(selectionCountName) = \(selectionTerms.joined(separator: " + "))"
+        ]
+
+        if choiceGroup.minOccurs > 0 {
+            lines.append("        if \(selectionCountName) == 0 {")
+            lines.append("            throw SOAPSemanticValidationError(field: \"\(fieldLabel)\", code: \"[CG_SEMANTIC_012]\", message: \"Choice group requires at least one value.\")")
+            lines.append("        }")
+        }
+
+        lines.append("        if \(selectionCountName) > 1 {")
+        lines.append("            throw SOAPSemanticValidationError(field: \"\(fieldLabel)\", code: \"[CG_SEMANTIC_013]\", message: \"Choice group allows at most one value.\")")
+        lines.append("        }")
+        return lines
     }
 
     func emitOccurrenceValidation(field: GeneratedTypeFieldIR) -> [String] {
@@ -475,6 +688,134 @@ private extension SwiftCodeEmitter {
         }
 
         return lines
+    }
+
+    func emitNumericRangeValidation(
+        field: GeneratedTypeFieldIR,
+        invalidIf comparisonOperator: String,
+        threshold: String,
+        diagnosticCode: String,
+        message: String
+    ) -> [String] {
+        guard supportsNumericComparison(field: field) else {
+            return []
+        }
+
+        let valueName = field.isOptional ? "v" : field.name
+        let condition = "\(valueName) \(comparisonOperator) \(threshold)"
+        let throwLine = "throw SOAPSemanticValidationError(field: \"\(field.name)\", code: \"\(diagnosticCode)\", message: \"\(message)\")"
+
+        if field.isOptional {
+            return [
+                "        if let v = \(field.name), \(condition) {",
+                "            \(throwLine)",
+                "        }"
+            ]
+        }
+
+        return [
+            "        if \(condition) {",
+            "            \(throwLine)",
+            "        }"
+        ]
+    }
+
+    func emitTotalDigitsValidation(field: GeneratedTypeFieldIR, constraintValue: String) -> [String] {
+        guard let sourceExpression = numericDigitSourceExpression(field: field, valueName: field.isOptional ? "v" : field.name) else {
+            return []
+        }
+
+        let variableBaseName = validationVariableBaseName(for: field)
+        let sourceVariableName = "\(variableBaseName)TotalDigitsSource"
+        let countVariableName = "\(variableBaseName)TotalDigitsCount"
+        let throwLine = "throw SOAPSemanticValidationError(field: \"\(field.name)\", code: \"[CG_SEMANTIC_010]\", message: \"Value exceeds totalDigits \(constraintValue).\")"
+
+        if field.isOptional {
+            return [
+                "        if let v = \(field.name) {",
+                "            let \(sourceVariableName) = \(sourceExpression)",
+                "            let \(countVariableName) = \(sourceVariableName).filter { $0.isNumber }.count",
+                "            if \(countVariableName) > \(constraintValue) {",
+                "                \(throwLine)",
+                "            }",
+                "        }"
+            ]
+        }
+
+        return [
+            "        let \(sourceVariableName) = \(sourceExpression)",
+            "        let \(countVariableName) = \(sourceVariableName).filter { $0.isNumber }.count",
+            "        if \(countVariableName) > \(constraintValue) {",
+            "            \(throwLine)",
+            "        }"
+        ]
+    }
+
+    func emitFractionDigitsValidation(field: GeneratedTypeFieldIR, constraintValue: String) -> [String] {
+        guard let sourceExpression = numericDigitSourceExpression(field: field, valueName: field.isOptional ? "v" : field.name) else {
+            return []
+        }
+
+        let variableBaseName = validationVariableBaseName(for: field)
+        let sourceVariableName = "\(variableBaseName)FractionDigitsSource"
+        let partsVariableName = "\(variableBaseName)FractionDigitsParts"
+        let countVariableName = "\(variableBaseName)FractionDigitsCount"
+        let throwLine = "throw SOAPSemanticValidationError(field: \"\(field.name)\", code: \"[CG_SEMANTIC_011]\", message: \"Value exceeds fractionDigits \(constraintValue).\")"
+
+        if field.isOptional {
+            return [
+                "        if let v = \(field.name) {",
+                "            let \(sourceVariableName) = \(sourceExpression)",
+                "            let \(partsVariableName) = \(sourceVariableName).split(separator: \".\", maxSplits: 1, omittingEmptySubsequences: false)",
+                "            let \(countVariableName) = \(partsVariableName).count > 1 ? \(partsVariableName)[1].filter { $0.isNumber }.count : 0",
+                "            if \(countVariableName) > \(constraintValue) {",
+                "                \(throwLine)",
+                "            }",
+                "        }"
+            ]
+        }
+
+        return [
+            "        let \(sourceVariableName) = \(sourceExpression)",
+            "        let \(partsVariableName) = \(sourceVariableName).split(separator: \".\", maxSplits: 1, omittingEmptySubsequences: false)",
+            "        let \(countVariableName) = \(partsVariableName).count > 1 ? \(partsVariableName)[1].filter { $0.isNumber }.count : 0",
+            "        if \(countVariableName) > \(constraintValue) {",
+            "            \(throwLine)",
+            "        }"
+        ]
+    }
+
+    func supportsNumericComparison(field: GeneratedTypeFieldIR) -> Bool {
+        supportedNumericSwiftTypes.contains(field.swiftTypeName)
+    }
+
+    func numericDigitSourceExpression(field: GeneratedTypeFieldIR, valueName: String) -> String? {
+        guard supportedNumericSwiftTypes.contains(field.swiftTypeName) else {
+            return nil
+        }
+
+        return "NSDecimalNumber(value: \(valueName)).stringValue.trimmingCharacters(in: CharacterSet(charactersIn: \"+-\"))"
+    }
+
+    func validationVariableBaseName(for field: GeneratedTypeFieldIR) -> String {
+        let sanitized = field.name.replacingOccurrences(of: "`", with: "")
+        return sanitized.isEmpty ? "value" : sanitized
+    }
+
+    var supportedNumericSwiftTypes: Set<String> {
+        [
+            "Double", "Float",
+            "Int", "Int8", "Int16", "Int32", "Int64",
+            "UInt", "UInt8", "UInt16", "UInt32", "UInt64"
+        ]
+    }
+
+    func choiceSelectionCountExpression(for field: GeneratedTypeFieldIR) -> String {
+        if field.swiftTypeName.hasPrefix("[") {
+            return "(\(field.name)?.isEmpty == false ? 1 : 0)"
+        }
+
+        return "(\(field.name) != nil ? 1 : 0)"
     }
 
     func sanitizeEnumCaseName(_ rawValue: String) -> String {

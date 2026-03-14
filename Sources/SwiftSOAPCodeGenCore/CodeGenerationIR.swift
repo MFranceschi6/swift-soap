@@ -44,6 +44,8 @@ public enum FacetConstraintKind: String, Sendable, Equatable {
     case pattern
     case minInclusive
     case maxInclusive
+    case minExclusive
+    case maxExclusive
     case totalDigits
     case fractionDigits
 }
@@ -58,10 +60,17 @@ public struct FacetConstraintIR: Sendable, Equatable {
     }
 }
 
+public enum GeneratedXMLFieldKindIR: String, Sendable, Equatable {
+    case element
+    case attribute
+    case text
+}
+
 public struct GeneratedTypeFieldIR: Sendable, Equatable {
     public let name: String
     public let swiftTypeName: String
     public let isOptional: Bool
+    public let xmlFieldKind: GeneratedXMLFieldKindIR
     /// Lower XSD occurrence bound for repeated fields represented as Swift arrays.
     public let minOccurs: Int?
     /// Upper XSD occurrence bound for repeated fields represented as Swift arrays.
@@ -78,6 +87,7 @@ public struct GeneratedTypeFieldIR: Sendable, Equatable {
         name: String,
         swiftTypeName: String,
         isOptional: Bool,
+        xmlFieldKind: GeneratedXMLFieldKindIR = .element,
         minOccurs: Int? = nil,
         maxOccurs: Int? = nil,
         xmlName: String? = nil,
@@ -87,6 +97,7 @@ public struct GeneratedTypeFieldIR: Sendable, Equatable {
         self.name = name
         self.swiftTypeName = swiftTypeName
         self.isOptional = isOptional
+        self.xmlFieldKind = xmlFieldKind
         self.minOccurs = minOccurs
         self.maxOccurs = maxOccurs
         self.xmlName = xmlName
@@ -111,11 +122,26 @@ public struct GeneratedProtocolIR: Sendable, Equatable {
     }
 }
 
+public struct GeneratedChoiceGroupIR: Sendable, Equatable {
+    public let fieldNames: [String]
+    /// Lower bound for how many branch selections the choice group requires.
+    public let minOccurs: Int
+    /// Upper bound for branch selections. Nil means unbounded.
+    public let maxOccurs: Int?
+
+    public init(fieldNames: [String], minOccurs: Int = 1, maxOccurs: Int? = 1) {
+        self.fieldNames = fieldNames
+        self.minOccurs = minOccurs
+        self.maxOccurs = maxOccurs
+    }
+}
+
 public struct GeneratedTypeIR: Sendable, Equatable {
     public let swiftTypeName: String
     public let kind: GeneratedTypeKind
     public let protocolConformances: [String]
     public let fields: [GeneratedTypeFieldIR]
+    public let choiceGroups: [GeneratedChoiceGroupIR]
     /// Populated only for `kind == .enumeration`; raw string values of each enum case.
     public let enumerationCases: [String]
     /// XML root element name for doc/literal element-reference payloads.
@@ -131,6 +157,7 @@ public struct GeneratedTypeIR: Sendable, Equatable {
         kind: GeneratedTypeKind,
         protocolConformances: [String] = [],
         fields: [GeneratedTypeFieldIR],
+        choiceGroups: [GeneratedChoiceGroupIR] = [],
         enumerationCases: [String] = [],
         xmlRootElementName: String? = nil,
         xmlRootElementNamespaceURI: String? = nil
@@ -139,6 +166,7 @@ public struct GeneratedTypeIR: Sendable, Equatable {
         self.kind = kind
         self.protocolConformances = protocolConformances
         self.fields = fields
+        self.choiceGroups = choiceGroups
         self.enumerationCases = enumerationCases
         self.xmlRootElementName = xmlRootElementName
         self.xmlRootElementNamespaceURI = xmlRootElementNamespaceURI
