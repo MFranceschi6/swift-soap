@@ -25,6 +25,34 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - Repeated schema fields now preserve finite `minOccurs` / `maxOccurs` bounds in the
   IR so strict generated `validate()` methods can enforce array cardinality, including
   exact-count cases such as `minOccurs == maxOccurs`.
+- Strict generated `validate()` methods now also enforce parsed numeric XSD facets
+  for primitive numeric fields, covering `minInclusive`, `maxInclusive`, `totalDigits`,
+  and `fractionDigits` in addition to the pre-existing regex and string-length checks.
+- Strict generated `validate()` methods now also cover exclusive numeric bounds via
+  `minExclusive` and `maxExclusive`, using dedicated diagnostics in the generated code.
+- Direct XSD `<choice>` groups are now preserved through parsing and IR generation
+  instead of being flattened into an unstructured list, allowing the Swift emitter
+  to distinguish required-vs-optional choice groups and generate mutual-exclusion
+  validation for the supported `maxOccurs == 1` subset.
+- Generated models now preserve XSD `attribute` vs `element` semantics in the IR and
+  emit source-level XML annotations for attribute-backed fields: `@XMLCodable` +
+  `@XMLAttribute` on Swift 5.9+ targets, and `@SwiftSOAPXML.XMLAttribute` property
+  wrappers on earlier targets.
+- Non-enumeration generated `simpleType` wrappers are now emitted as text-backed
+  Codable value objects instead of synthetic keyed `<rawValue>` child-element models,
+  keeping their XML wire shape aligned with XSD simple-type semantics.
+- `simpleContent` complex types now generate a text-backed value field plus flattened
+  attribute fields, including inheritance across `simpleContent` extension chains,
+  with manual Codable emission only where mixed text-plus-attribute XML requires it.
+- Direct XSD `<all>` groups are now parsed through the same flat field pipeline as
+  `<sequence>`, including inline anonymous wrapper complex types used by doc/literal
+  payload elements.
+- Top-level XSD `attributeGroup` definitions and nested `attributeGroup ref="..."`
+  reuse are now parsed and flattened into generated attribute fields for both
+  `complexType` and `simpleContent` models.
+- Top-level XSD `attribute` definitions plus local `attribute ref="..."`
+  reuse are now resolved into generated attribute-backed fields, including
+  `use="required"` overrides declared at the reference site.
 - Complex types that participate in XSD extension hierarchies now also generate
   companion semantic protocols such as `BaseRequestProtocol` / `ExtendedRequestProtocol`,
   with protocol inheritance mirroring the schema derivation chain while concrete
@@ -36,10 +64,29 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - Added inline WSDL regression coverage in `SemanticValidationIRTests` for:
   - named doc/literal wrapper elements backed by named complex types
   - `complexContent/extension` inheritance flattening
+  - required and optional direct `choice` groups with generated exclusivity validation
+  - `xsd:attribute` fields emitted with `XMLFieldCodingOverrideProvider` and XML-safe lookup keys
+  - `simpleContent` parsing, protocol inheritance, and flattened text-plus-attribute field generation
+  - nested `attributeGroup` reuse for both `complexType` and `simpleContent` attribute flattening
+  - top-level `attribute` definitions reused via `attribute ref="..."`
+  - text-backed `simpleType` wrappers with generated single-value Codable methods
+  - `xsd:all` complex types and inline wrapper elements
   - finite repeated-element cardinality enforcement for generated array fields
+  - numeric facet validation for `minInclusive`, `maxInclusive`, `totalDigits`, and `fractionDigits`
+  - exclusive numeric facet validation for `minExclusive` and `maxExclusive`
   - generated protocol hierarchies for inherited complex types
   - `maxOccurs="unbounded"` to Swift array mapping
   - reserved keyword escaping in generated payload models
+- Added parser coverage in `WSDLDocumentParserTests` confirming that direct `choice`
+  groups retain their element membership and group-level occurrence metadata.
+- Added parser coverage in `WSDLDocumentParserTests` confirming that `simpleContent`
+  base types and extension attributes are preserved in the schema model.
+- Added parser coverage in `WSDLDocumentParserTests` confirming that schema-level
+  `attributeGroup` definitions preserve both nested refs and complex-type reuse.
+- Added parser coverage in `WSDLDocumentParserTests` confirming that schema-level
+  `attribute` definitions and local `attribute ref="..."` reuse preserve ref metadata.
+- Added parser coverage in `WSDLDocumentParserTests` confirming that exclusive
+  numeric simple-type facets are preserved in the schema model.
 
 ### Added (Multi-file plugin output + XML namespace support for root elements)
 

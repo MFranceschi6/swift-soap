@@ -176,12 +176,159 @@ final class WSDLDocumentParserTests: XCTestCase {
 
         XCTAssertEqual(schema.complexTypes.count, 1)
         XCTAssertEqual(schema.complexTypes[0].sequence.first?.name, "id")
+        XCTAssertEqual(schema.complexTypes[0].choiceGroups.count, 1)
+        XCTAssertEqual(schema.complexTypes[0].choiceGroups.first?.minOccurs, nil)
+        XCTAssertEqual(schema.complexTypes[0].choiceGroups.first?.maxOccurs, nil)
+        XCTAssertEqual(schema.complexTypes[0].choiceGroups.first?.elements.first?.name, "couponCode")
         XCTAssertEqual(schema.complexTypes[0].choice.first?.name, "couponCode")
         XCTAssertEqual(schema.complexTypes[0].attributes.first?.name, "source")
 
         XCTAssertEqual(schema.simpleTypes.count, 1)
         XCTAssertEqual(schema.simpleTypes[0].name, "OrderStatus")
         XCTAssertEqual(schema.simpleTypes[0].enumerationValues, ["pending", "shipped"])
+    }
+
+    func test_parse_typesWithSimpleContent_extractsValueBaseAndAttributes() throws {
+        let wsdl = """
+        <wsdl:definitions
+            xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+            xmlns:tns="urn:types"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            targetNamespace="urn:types">
+          <wsdl:types>
+            <xsd:schema targetNamespace="urn:types">
+              <xsd:complexType name="Amount">
+                <xsd:simpleContent>
+                  <xsd:extension base="xsd:decimal">
+                    <xsd:attribute name="currency" type="xsd:string" use="required"/>
+                  </xsd:extension>
+                </xsd:simpleContent>
+              </xsd:complexType>
+              <xsd:complexType name="LabeledAmount">
+                <xsd:simpleContent>
+                  <xsd:extension base="tns:Amount">
+                    <xsd:attribute name="label" type="xsd:string"/>
+                  </xsd:extension>
+                </xsd:simpleContent>
+              </xsd:complexType>
+            </xsd:schema>
+          </wsdl:types>
+        </wsdl:definitions>
+        """
+
+        let definition = try WSDLDocumentParser().parse(data: Data(wsdl.utf8))
+        let schema = try XCTUnwrap(definition.types.schemas.first)
+
+        XCTAssertEqual(schema.complexTypes.count, 2)
+        XCTAssertEqual(schema.complexTypes[0].name, "Amount")
+        XCTAssertEqual(schema.complexTypes[0].simpleContentBaseQName?.rawValue, "xsd:decimal")
+        XCTAssertEqual(schema.complexTypes[0].attributes.map(\.name), ["currency"])
+        XCTAssertEqual(schema.complexTypes[1].name, "LabeledAmount")
+        XCTAssertEqual(schema.complexTypes[1].simpleContentBaseQName?.rawValue, "tns:Amount")
+        XCTAssertEqual(schema.complexTypes[1].attributes.map(\.name), ["label"])
+    }
+
+    func test_parse_typesWithAttributeGroups_extractsDefinitionsAndRefs() throws {
+        let wsdl = """
+        <wsdl:definitions
+            xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+            xmlns:tns="urn:types"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            targetNamespace="urn:types">
+          <wsdl:types>
+            <xsd:schema targetNamespace="urn:types">
+              <xsd:attributeGroup name="BaseMetadata">
+                <xsd:attribute name="source" type="xsd:string" use="required"/>
+              </xsd:attributeGroup>
+              <xsd:attributeGroup name="ExtendedMetadata">
+                <xsd:attributeGroup ref="tns:BaseMetadata"/>
+                <xsd:attribute name="locale" type="xsd:string"/>
+              </xsd:attributeGroup>
+              <xsd:complexType name="Order">
+                <xsd:sequence>
+                  <xsd:element name="id" type="xsd:string"/>
+                </xsd:sequence>
+                <xsd:attributeGroup ref="tns:ExtendedMetadata"/>
+              </xsd:complexType>
+            </xsd:schema>
+          </wsdl:types>
+        </wsdl:definitions>
+        """
+
+        let definition = try WSDLDocumentParser().parse(data: Data(wsdl.utf8))
+        let schema = try XCTUnwrap(definition.types.schemas.first)
+        let orderType = try XCTUnwrap(schema.complexTypes.first)
+
+        XCTAssertEqual(schema.attributeGroups.map(\.name), ["BaseMetadata", "ExtendedMetadata"])
+        XCTAssertEqual(schema.attributeGroups[0].attributes.map(\.name), ["source"])
+        XCTAssertEqual(schema.attributeGroups[1].attributeGroupRefs.map(\.rawValue), ["tns:BaseMetadata"])
+        XCTAssertEqual(schema.attributeGroups[1].attributes.map(\.name), ["locale"])
+        XCTAssertEqual(orderType.attributeGroupRefs.map(\.rawValue), ["tns:ExtendedMetadata"])
+    }
+
+    func test_parse_typesWithAttributeRefs_extractsDefinitionsAndRefs() throws {
+        let wsdl = """
+        <wsdl:definitions
+            xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+            xmlns:tns="urn:types"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            targetNamespace="urn:types">
+          <wsdl:types>
+            <xsd:schema targetNamespace="urn:types">
+              <xsd:attribute name="source" type="xsd:string"/>
+              <xsd:attribute name="locale" type="xsd:string"/>
+              <xsd:attributeGroup name="SharedMetadata">
+                <xsd:attribute ref="tns:source" use="required"/>
+              </xsd:attributeGroup>
+              <xsd:complexType name="Order">
+                <xsd:sequence>
+                  <xsd:element name="id" type="xsd:string"/>
+                </xsd:sequence>
+                <xsd:attributeGroup ref="tns:SharedMetadata"/>
+                <xsd:attribute ref="tns:locale"/>
+              </xsd:complexType>
+            </xsd:schema>
+          </wsdl:types>
+        </wsdl:definitions>
+        """
+
+        let definition = try WSDLDocumentParser().parse(data: Data(wsdl.utf8))
+        let schema = try XCTUnwrap(definition.types.schemas.first)
+        let orderType = try XCTUnwrap(schema.complexTypes.first)
+        let sharedMetadataGroup = try XCTUnwrap(schema.attributeGroups.first)
+
+        XCTAssertEqual(schema.attributeDefinitions.map(\.name), ["source", "locale"])
+        XCTAssertEqual(sharedMetadataGroup.attributeRefs.map(\.refQName.rawValue), ["tns:source"])
+        XCTAssertEqual(sharedMetadataGroup.attributeRefs.first?.use, "required")
+        XCTAssertEqual(orderType.attributeRefs.map(\.refQName.rawValue), ["tns:locale"])
+    }
+
+    func test_parse_typesWithAllGroup_extractsElementsAsSequenceMembers() throws {
+        let wsdl = """
+        <wsdl:definitions
+            xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            targetNamespace="urn:types">
+          <wsdl:types>
+            <xsd:schema targetNamespace="urn:types">
+              <xsd:complexType name="Contact">
+                <xsd:all>
+                  <xsd:element name="name" type="xsd:string"/>
+                  <xsd:element name="email" type="xsd:string" minOccurs="0"/>
+                </xsd:all>
+              </xsd:complexType>
+            </xsd:schema>
+          </wsdl:types>
+        </wsdl:definitions>
+        """
+
+        let definition = try WSDLDocumentParser().parse(data: Data(wsdl.utf8))
+        let schema = try XCTUnwrap(definition.types.schemas.first)
+        let contactType = try XCTUnwrap(schema.complexTypes.first)
+
+        XCTAssertEqual(contactType.sequence.map(\.name), ["name", "email"])
+        XCTAssertNil(contactType.sequence.first?.maxOccurs)
+        XCTAssertEqual(contactType.sequence.last?.minOccurs, 0)
     }
 
     func test_parse_withLocalSchemaInclude_loadsIncludedSchema() throws {
@@ -351,6 +498,34 @@ final class WSDLDocumentParserTests: XCTestCase {
         XCTAssertEqual(facets.pattern, "[0-9]+")
         XCTAssertNil(facets.minInclusive)
         XCTAssertNil(facets.maxInclusive)
+    }
+
+    func test_parse_simpleTypeWithExclusiveNumericFacets_populatesFacets() throws {
+        let wsdl = """
+        <wsdl:definitions
+            xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            targetNamespace="urn:test">
+          <wsdl:types>
+            <xsd:schema targetNamespace="urn:test">
+              <xsd:simpleType name="ExclusivePrice">
+                <xsd:restriction base="xsd:decimal">
+                  <xsd:minExclusive value="1.25"/>
+                  <xsd:maxExclusive value="999.99"/>
+                </xsd:restriction>
+              </xsd:simpleType>
+            </xsd:schema>
+          </wsdl:types>
+        </wsdl:definitions>
+        """
+
+        let definition = try WSDLDocumentParser().parse(data: Data(wsdl.utf8))
+        let schema = try XCTUnwrap(definition.types.schemas.first)
+        let simpleType = try XCTUnwrap(schema.simpleTypes.first)
+        let facets = try XCTUnwrap(simpleType.facets)
+
+        XCTAssertEqual(facets.minExclusive, "1.25")
+        XCTAssertEqual(facets.maxExclusive, "999.99")
     }
 
     func test_parse_simpleTypeWithEnumerationFacets_populatesFacetsAndEnumerationValues() throws {

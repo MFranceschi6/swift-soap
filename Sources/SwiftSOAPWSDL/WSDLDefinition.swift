@@ -231,6 +231,8 @@ extension WSDLDefinition {
         public let imports: [SchemaImport]
         public let includes: [SchemaInclude]
         public let elements: [Element]
+        public let attributeDefinitions: [Attribute]
+        public let attributeGroups: [AttributeGroup]
         public let complexTypes: [ComplexType]
         public let simpleTypes: [SimpleType]
 
@@ -239,6 +241,8 @@ extension WSDLDefinition {
             imports: [SchemaImport],
             includes: [SchemaInclude],
             elements: [Element],
+            attributeDefinitions: [Attribute] = [],
+            attributeGroups: [AttributeGroup] = [],
             complexTypes: [ComplexType],
             simpleTypes: [SimpleType]
         ) {
@@ -246,6 +250,8 @@ extension WSDLDefinition {
             self.imports = imports
             self.includes = includes
             self.elements = elements
+            self.attributeDefinitions = attributeDefinitions
+            self.attributeGroups = attributeGroups
             self.complexTypes = complexTypes
             self.simpleTypes = simpleTypes
         }
@@ -303,22 +309,52 @@ extension WSDLDefinition {
     public struct ComplexType: Sendable, Equatable {
         public let name: String
         public let baseQName: QName?
+        public let simpleContentBaseQName: QName?
         public let sequence: [Element]
-        public let choice: [Element]
+        public let choiceGroups: [ChoiceGroup]
         public let attributes: [Attribute]
+        public let attributeRefs: [AttributeReference]
+        public let attributeGroupRefs: [QName]
+
+        public var choice: [Element] {
+            choiceGroups.flatMap(\.elements)
+        }
 
         public init(
             name: String,
             baseQName: QName? = nil,
+            simpleContentBaseQName: QName? = nil,
             sequence: [Element],
-            choice: [Element],
-            attributes: [Attribute]
+            choice: [Element] = [],
+            choiceGroups: [ChoiceGroup]? = nil,
+            attributes: [Attribute],
+            attributeRefs: [AttributeReference] = [],
+            attributeGroupRefs: [QName] = []
         ) {
             self.name = name
             self.baseQName = baseQName
+            self.simpleContentBaseQName = simpleContentBaseQName
             self.sequence = sequence
-            self.choice = choice
+            self.choiceGroups = choiceGroups ?? (choice.isEmpty ? [] : [ChoiceGroup(elements: choice)])
             self.attributes = attributes
+            self.attributeRefs = attributeRefs
+            self.attributeGroupRefs = attributeGroupRefs
+        }
+    }
+
+    public struct ChoiceGroup: Sendable, Equatable {
+        public let elements: [Element]
+        public let minOccurs: Int?
+        public let maxOccurs: String?
+
+        public init(
+            elements: [Element],
+            minOccurs: Int? = nil,
+            maxOccurs: String? = nil
+        ) {
+            self.elements = elements
+            self.minOccurs = minOccurs
+            self.maxOccurs = maxOccurs
         }
     }
 
@@ -330,6 +366,8 @@ extension WSDLDefinition {
         public let length: Int?
         public let minInclusive: String?
         public let maxInclusive: String?
+        public let minExclusive: String?
+        public let maxExclusive: String?
         public let totalDigits: Int?
         public let fractionDigits: Int?
 
@@ -341,6 +379,8 @@ extension WSDLDefinition {
             length: Int? = nil,
             minInclusive: String? = nil,
             maxInclusive: String? = nil,
+            minExclusive: String? = nil,
+            maxExclusive: String? = nil,
             totalDigits: Int? = nil,
             fractionDigits: Int? = nil
         ) {
@@ -351,6 +391,8 @@ extension WSDLDefinition {
             self.length = length
             self.minInclusive = minInclusive
             self.maxInclusive = maxInclusive
+            self.minExclusive = minExclusive
+            self.maxExclusive = maxExclusive
             self.totalDigits = totalDigits
             self.fractionDigits = fractionDigits
         }
@@ -358,7 +400,8 @@ extension WSDLDefinition {
         public var isEmpty: Bool {
             enumeration.isEmpty && pattern == nil && minLength == nil &&
             maxLength == nil && length == nil && minInclusive == nil &&
-            maxInclusive == nil && totalDigits == nil && fractionDigits == nil
+            maxInclusive == nil && minExclusive == nil && maxExclusive == nil &&
+            totalDigits == nil && fractionDigits == nil
         }
     }
 
@@ -393,6 +436,35 @@ extension WSDLDefinition {
             self.name = name
             self.typeQName = typeQName
             self.use = use
+        }
+    }
+
+    public struct AttributeReference: Sendable, Equatable {
+        public let refQName: QName
+        public let use: String?
+
+        public init(refQName: QName, use: String? = nil) {
+            self.refQName = refQName
+            self.use = use
+        }
+    }
+
+    public struct AttributeGroup: Sendable, Equatable {
+        public let name: String
+        public let attributes: [Attribute]
+        public let attributeRefs: [AttributeReference]
+        public let attributeGroupRefs: [QName]
+
+        public init(
+            name: String,
+            attributes: [Attribute],
+            attributeRefs: [AttributeReference] = [],
+            attributeGroupRefs: [QName] = []
+        ) {
+            self.name = name
+            self.attributes = attributes
+            self.attributeRefs = attributeRefs
+            self.attributeGroupRefs = attributeGroupRefs
         }
     }
 }

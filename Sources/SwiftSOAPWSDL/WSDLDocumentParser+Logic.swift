@@ -24,7 +24,9 @@ import SwiftSOAPXML
 //
 // Only XSD structures commonly found in WSDL 1.1 inline schemas are parsed:
 //   - `<complexType>` with direct or `complexContent/simpleContent` `<extension>`
-//     carrying `<sequence>`, `<choice>`, `<attribute>` children
+//     carrying `<sequence>`, `<all>`, `<choice>`, `<attribute>`, `<attributeGroup>` children
+//   - top-level `<attribute>` definitions and local `<attribute ref="...">` reuse
+//   - top-level `<attributeGroup>` definitions and `<attributeGroup ref="...">` reuse
 //   - `<simpleType>` with `<restriction>` + `<enumeration>` (string enums)
 //   - `<element>` at the schema top level
 // XSD features not used in SOAP/WSDL contexts (e.g., `<group>`, `<any>`,
@@ -222,6 +224,18 @@ extension WSDLDocumentParser {
                 try parseSchemaElement(elementNode, namespaceMappings: namespaceMappings)
             }
 
+        let attributeDefinitions = try parseAttributes(
+            from: schemaNode.children().filter { $0.name == "attribute" },
+            complexTypeName: "schema",
+            namespaceMappings: namespaceMappings
+        )
+
+        let attributeGroups = try schemaNode.children()
+            .filter { $0.name == "attributeGroup" && normalized($0.attribute(named: "name")) != nil }
+            .map { attributeGroupNode in
+                try parseAttributeGroup(attributeGroupNode, namespaceMappings: namespaceMappings)
+            }
+
         let complexTypes = try schemaNode.children()
             .filter { $0.name == "complexType" }
             .map { complexTypeNode in
@@ -239,6 +253,8 @@ extension WSDLDocumentParser {
             imports: imports,
             includes: includes,
             elements: elements,
+            attributeDefinitions: attributeDefinitions,
+            attributeGroups: attributeGroups,
             complexTypes: complexTypes,
             simpleTypes: simpleTypes
         )
@@ -271,14 +287,15 @@ extension WSDLDocumentParser {
             normalized(elementNode.attribute(named: "nillable")) == "1"
 
         // Parse inline anonymous complexType children (e.g. doc/literal wrapper elements).
-        // These have no "type" attribute but contain a nested <complexType><sequence>...</sequence></complexType>.
+        // These have no "type" attribute but contain a nested content model such as
+        // <complexType><sequence>...</sequence></complexType> or <complexType><all>...</all></complexType>.
         let inlineSequenceElements: [WSDLDefinition.Element] = try elementNode.children()
             .filter { $0.name == "complexType" }
             .flatMap { complexTypeNode in
                 try complexTypeNode.children()
-                    .filter { $0.name == "sequence" }
-                    .flatMap { sequenceNode in
-                        try sequenceNode.children()
+                    .filter { $0.name == "sequence" || $0.name == "all" }
+                    .flatMap { containerNode in
+                        try containerNode.children()
                             .filter { $0.name == "element" }
                             .map { child in
                                 try parseSchemaElement(child, namespaceMappings: namespaceMappings)
@@ -305,39 +322,96 @@ extension WSDLDocumentParser {
             throw WSDLParsingError.invalidSchema(name: nil, message: "complexType node is missing required 'name'.")
         }
 
-        let extensionNode = complexTypeNode.children()
-            .first(where: { $0.name == "complexContent" || $0.name == "simpleContent" })?
+        let complexExtensionNode = complexTypeNode.children()
+            .first(where: { $0.name == "complexContent" })?
+            .children()
+            .first(where: { $0.name == "extension" })
+        let simpleExtensionNode = complexTypeNode.children()
+            .first(where: { $0.name == "simpleContent" })?
             .children()
             .first(where: { $0.name == "extension" })
         let baseQName = try resolveQName(
-            fromQualifiedName: extensionNode?.attribute(named: "base"),
+            fromQualifiedName: complexExtensionNode?.attribute(named: "base"),
             namespaceMappings: namespaceMappings,
             context: "complexType extension base"
         )
+        let simpleContentBaseQName = try resolveQName(
+            fromQualifiedName: simpleExtensionNode?.attribute(named: "base"),
+            namespaceMappings: namespaceMappings,
+            context: "simpleContent extension base"
+        )
 
         let sequenceElements = try parseNestedElements(
-            from: complexTypeNode.children().filter { $0.name == "sequence" } +
-                (extensionNode?.children().filter { $0.name == "sequence" } ?? []),
+            from: complexTypeNode.children().filter { $0.name == "sequence" || $0.name == "all" } +
+                (complexExtensionNode?.children().filter { $0.name == "sequence" || $0.name == "all" } ?? []),
             namespaceMappings: namespaceMappings
         )
-        let choiceElements = try parseNestedElements(
+        let choiceGroups = try parseChoiceGroups(
             from: complexTypeNode.children().filter { $0.name == "choice" } +
-                (extensionNode?.children().filter { $0.name == "choice" } ?? []),
+                (complexExtensionNode?.children().filter { $0.name == "choice" } ?? []),
             namespaceMappings: namespaceMappings
         )
         let attributes = try parseAttributes(
             from: complexTypeNode.children().filter { $0.name == "attribute" } +
-                (extensionNode?.children().filter { $0.name == "attribute" } ?? []),
+                (complexExtensionNode?.children().filter { $0.name == "attribute" } ?? []) +
+                (simpleExtensionNode?.children().filter { $0.name == "attribute" } ?? []),
             complexTypeName: name,
+            namespaceMappings: namespaceMappings
+        )
+        let attributeRefs = try parseAttributeRefs(
+            from: complexTypeNode.children().filter { $0.name == "attribute" } +
+                (complexExtensionNode?.children().filter { $0.name == "attribute" } ?? []) +
+                (simpleExtensionNode?.children().filter { $0.name == "attribute" } ?? []),
+            namespaceMappings: namespaceMappings
+        )
+        let attributeGroupRefs = try parseAttributeGroupRefs(
+            from: complexTypeNode.children().filter { $0.name == "attributeGroup" } +
+                (complexExtensionNode?.children().filter { $0.name == "attributeGroup" } ?? []) +
+                (simpleExtensionNode?.children().filter { $0.name == "attributeGroup" } ?? []),
+            contextName: name,
             namespaceMappings: namespaceMappings
         )
 
         return WSDLDefinition.ComplexType(
             name: name,
             baseQName: baseQName,
+            simpleContentBaseQName: simpleContentBaseQName,
             sequence: sequenceElements,
-            choice: choiceElements,
-            attributes: attributes
+            choiceGroups: choiceGroups,
+            attributes: attributes,
+            attributeRefs: attributeRefs,
+            attributeGroupRefs: attributeGroupRefs
+        )
+    }
+
+    private func parseAttributeGroup(
+        _ attributeGroupNode: SwiftSOAPXML.XMLNode,
+        namespaceMappings: [String: String]
+    ) throws -> WSDLDefinition.AttributeGroup {
+        guard let name = normalized(attributeGroupNode.attribute(named: "name")) else {
+            throw WSDLParsingError.invalidSchema(name: nil, message: "attributeGroup node is missing required 'name'.")
+        }
+
+        let attributes = try parseAttributes(
+            from: attributeGroupNode.children().filter { $0.name == "attribute" },
+            complexTypeName: name,
+            namespaceMappings: namespaceMappings
+        )
+        let attributeRefs = try parseAttributeRefs(
+            from: attributeGroupNode.children().filter { $0.name == "attribute" },
+            namespaceMappings: namespaceMappings
+        )
+        let attributeGroupRefs = try parseAttributeGroupRefs(
+            from: attributeGroupNode.children().filter { $0.name == "attributeGroup" },
+            contextName: name,
+            namespaceMappings: namespaceMappings
+        )
+
+        return WSDLDefinition.AttributeGroup(
+            name: name,
+            attributes: attributes,
+            attributeRefs: attributeRefs,
+            attributeGroupRefs: attributeGroupRefs
         )
     }
 
@@ -354,12 +428,34 @@ extension WSDLDocumentParser {
         }
     }
 
+    private func parseChoiceGroups(
+        from choiceNodes: [SwiftSOAPXML.XMLNode],
+        namespaceMappings: [String: String]
+    ) throws -> [WSDLDefinition.ChoiceGroup] {
+        try choiceNodes.map { choiceNode in
+            let elements = try choiceNode.children()
+                .filter { $0.name == "element" }
+                .map { elementNode in
+                    try parseSchemaElement(elementNode, namespaceMappings: namespaceMappings)
+                }
+
+            return WSDLDefinition.ChoiceGroup(
+                elements: elements,
+                minOccurs: normalized(choiceNode.attribute(named: "minOccurs")).flatMap(Int.init),
+                maxOccurs: normalized(choiceNode.attribute(named: "maxOccurs"))
+            )
+        }
+    }
+
     private func parseAttributes(
         from attributeNodes: [SwiftSOAPXML.XMLNode],
         complexTypeName: String,
         namespaceMappings: [String: String]
     ) throws -> [WSDLDefinition.Attribute] {
-        try attributeNodes.map { attributeNode -> WSDLDefinition.Attribute in
+        try attributeNodes.compactMap { attributeNode -> WSDLDefinition.Attribute? in
+            guard normalized(attributeNode.attribute(named: "ref")) == nil else {
+                return nil
+            }
             guard let attributeName = normalized(attributeNode.attribute(named: "name")) else {
                 throw WSDLParsingError.invalidSchema(
                     name: complexTypeName,
@@ -377,6 +473,46 @@ extension WSDLDocumentParser {
                 typeQName: typeQName,
                 use: normalized(attributeNode.attribute(named: "use"))
             )
+        }
+    }
+
+    private func parseAttributeRefs(
+        from attributeNodes: [SwiftSOAPXML.XMLNode],
+        namespaceMappings: [String: String]
+    ) throws -> [WSDLDefinition.AttributeReference] {
+        try attributeNodes.compactMap { attributeNode in
+            guard let refQName = try resolveQName(
+                fromQualifiedName: attributeNode.attribute(named: "ref"),
+                namespaceMappings: namespaceMappings,
+                context: "attribute ref"
+            ) else {
+                return nil
+            }
+
+            return WSDLDefinition.AttributeReference(
+                refQName: refQName,
+                use: normalized(attributeNode.attribute(named: "use"))
+            )
+        }
+    }
+
+    private func parseAttributeGroupRefs(
+        from attributeGroupNodes: [SwiftSOAPXML.XMLNode],
+        contextName: String,
+        namespaceMappings: [String: String]
+    ) throws -> [WSDLDefinition.QName] {
+        try attributeGroupNodes.map { attributeGroupNode in
+            guard let refQName = try resolveQName(
+                fromQualifiedName: attributeGroupNode.attribute(named: "ref"),
+                namespaceMappings: namespaceMappings,
+                context: "attributeGroup ref"
+            ) else {
+                throw WSDLParsingError.invalidSchema(
+                    name: contextName,
+                    message: "attributeGroup reference in '\(contextName)' is missing required 'ref'."
+                )
+            }
+            return refQName
         }
     }
 
@@ -424,6 +560,12 @@ extension WSDLDocumentParser {
             let maxInclusive = restrictionNode.children()
                 .first(where: { $0.name == "maxInclusive" })?
                 .attribute(named: "value").flatMap(normalized)
+            let minExclusive = restrictionNode.children()
+                .first(where: { $0.name == "minExclusive" })?
+                .attribute(named: "value").flatMap(normalized)
+            let maxExclusive = restrictionNode.children()
+                .first(where: { $0.name == "maxExclusive" })?
+                .attribute(named: "value").flatMap(normalized)
             let totalDigits = restrictionNode.children()
                 .first(where: { $0.name == "totalDigits" })?
                 .attribute(named: "value").flatMap { Int($0) }
@@ -438,6 +580,8 @@ extension WSDLDocumentParser {
                 length: length,
                 minInclusive: minInclusive,
                 maxInclusive: maxInclusive,
+                minExclusive: minExclusive,
+                maxExclusive: maxExclusive,
                 totalDigits: totalDigits,
                 fractionDigits: fractionDigits
             )
