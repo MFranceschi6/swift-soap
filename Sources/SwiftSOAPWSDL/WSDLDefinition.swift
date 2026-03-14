@@ -302,12 +302,20 @@ extension WSDLDefinition {
 
     public struct ComplexType: Sendable, Equatable {
         public let name: String
+        public let baseQName: QName?
         public let sequence: [Element]
         public let choice: [Element]
         public let attributes: [Attribute]
 
-        public init(name: String, sequence: [Element], choice: [Element], attributes: [Attribute]) {
+        public init(
+            name: String,
+            baseQName: QName? = nil,
+            sequence: [Element],
+            choice: [Element],
+            attributes: [Attribute]
+        ) {
             self.name = name
+            self.baseQName = baseQName
             self.sequence = sequence
             self.choice = choice
             self.attributes = attributes

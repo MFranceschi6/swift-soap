@@ -5,6 +5,7 @@ public struct SOAPCodeGenerationIR: Sendable, Equatable {
     public let moduleName: String
     public let generationScope: Set<CodeGenerationScopeOption>
     public let runtimeTargets: Set<CodeGenerationRuntimeTargetOption>
+    public let generatedProtocols: [GeneratedProtocolIR]
     public let generatedTypes: [GeneratedTypeIR]
     public let services: [ServiceIR]
     public let validationProfile: ValidationProfile
@@ -13,6 +14,7 @@ public struct SOAPCodeGenerationIR: Sendable, Equatable {
         moduleName: String,
         generationScope: Set<CodeGenerationScopeOption>,
         runtimeTargets: Set<CodeGenerationRuntimeTargetOption>,
+        generatedProtocols: [GeneratedProtocolIR] = [],
         generatedTypes: [GeneratedTypeIR],
         services: [ServiceIR],
         validationProfile: ValidationProfile = .strict
@@ -20,6 +22,7 @@ public struct SOAPCodeGenerationIR: Sendable, Equatable {
         self.moduleName = moduleName
         self.generationScope = generationScope
         self.runtimeTargets = runtimeTargets
+        self.generatedProtocols = generatedProtocols
         self.generatedTypes = generatedTypes
         self.services = services
         self.validationProfile = validationProfile
@@ -59,6 +62,11 @@ public struct GeneratedTypeFieldIR: Sendable, Equatable {
     public let name: String
     public let swiftTypeName: String
     public let isOptional: Bool
+    /// Lower XSD occurrence bound for repeated fields represented as Swift arrays.
+    public let minOccurs: Int?
+    /// Upper XSD occurrence bound for repeated fields represented as Swift arrays.
+    /// Nil means either "not repeated" or an unbounded array.
+    public let maxOccurs: Int?
     /// XML element/attribute name when it differs from the sanitized Swift name; nil = same as name.
     public let xmlName: String?
     /// Position in the XSD sequence; nil = unspecified.
@@ -70,6 +78,8 @@ public struct GeneratedTypeFieldIR: Sendable, Equatable {
         name: String,
         swiftTypeName: String,
         isOptional: Bool,
+        minOccurs: Int? = nil,
+        maxOccurs: Int? = nil,
         xmlName: String? = nil,
         xmlOrder: Int? = nil,
         constraints: [FacetConstraintIR] = []
@@ -77,15 +87,34 @@ public struct GeneratedTypeFieldIR: Sendable, Equatable {
         self.name = name
         self.swiftTypeName = swiftTypeName
         self.isOptional = isOptional
+        self.minOccurs = minOccurs
+        self.maxOccurs = maxOccurs
         self.xmlName = xmlName
         self.xmlOrder = xmlOrder
         self.constraints = constraints
     }
 }
 
+public struct GeneratedProtocolIR: Sendable, Equatable {
+    public let swiftTypeName: String
+    public let inheritedProtocolNames: [String]
+    public let fields: [GeneratedTypeFieldIR]
+
+    public init(
+        swiftTypeName: String,
+        inheritedProtocolNames: [String] = [],
+        fields: [GeneratedTypeFieldIR]
+    ) {
+        self.swiftTypeName = swiftTypeName
+        self.inheritedProtocolNames = inheritedProtocolNames
+        self.fields = fields
+    }
+}
+
 public struct GeneratedTypeIR: Sendable, Equatable {
     public let swiftTypeName: String
     public let kind: GeneratedTypeKind
+    public let protocolConformances: [String]
     public let fields: [GeneratedTypeFieldIR]
     /// Populated only for `kind == .enumeration`; raw string values of each enum case.
     public let enumerationCases: [String]
@@ -100,6 +129,7 @@ public struct GeneratedTypeIR: Sendable, Equatable {
     public init(
         swiftTypeName: String,
         kind: GeneratedTypeKind,
+        protocolConformances: [String] = [],
         fields: [GeneratedTypeFieldIR],
         enumerationCases: [String] = [],
         xmlRootElementName: String? = nil,
@@ -107,6 +137,7 @@ public struct GeneratedTypeIR: Sendable, Equatable {
     ) {
         self.swiftTypeName = swiftTypeName
         self.kind = kind
+        self.protocolConformances = protocolConformances
         self.fields = fields
         self.enumerationCases = enumerationCases
         self.xmlRootElementName = xmlRootElementName

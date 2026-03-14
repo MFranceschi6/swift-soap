@@ -6,6 +6,41 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Added (WSDL hardening for named doc/literal wrappers and XSD extensions)
+
+#### Codegen core
+- `WSDLDefinition.ComplexType` now preserves optional `baseQName` metadata so the
+  codegen pipeline can resolve `complexContent` / `simpleContent` extensions instead
+  of treating derived types like isolated shells.
+- `WSDLDocumentParser+Logic` now parses `<xsd:extension base="...">` within
+  `complexContent` and `simpleContent`, collecting derived `<sequence>`, `<choice>`,
+  and `<attribute>` members alongside direct `complexType` children.
+- `CodeGenerationIRBuilder.buildMessagePayloadTypes` now resolves doc/literal
+  `<wsdl:part element="...">` wrappers that point to a named `complexType`, preserving
+  the wrapper root namespace and generating the correct payload fields instead of
+  falling back to `parameters: String?`.
+- `CodeGenerationIRBuilder.buildSchemaTypes` now flattens inherited XSD members from
+  extension chains and maps repeated elements (`maxOccurs > 1` / `unbounded`) to
+  Swift array types in the generated IR.
+- Repeated schema fields now preserve finite `minOccurs` / `maxOccurs` bounds in the
+  IR so strict generated `validate()` methods can enforce array cardinality, including
+  exact-count cases such as `minOccurs == maxOccurs`.
+- Complex types that participate in XSD extension hierarchies now also generate
+  companion semantic protocols such as `BaseRequestProtocol` / `ExtendedRequestProtocol`,
+  with protocol inheritance mirroring the schema derivation chain while concrete
+  `struct` models remain flat and Codable-friendly for the XML wire format.
+- Swift property-name sanitisation now escapes a broader set of reserved keywords,
+  including `return`, so generated response models stay syntactically valid.
+
+#### Tests
+- Added inline WSDL regression coverage in `SemanticValidationIRTests` for:
+  - named doc/literal wrapper elements backed by named complex types
+  - `complexContent/extension` inheritance flattening
+  - finite repeated-element cardinality enforcement for generated array fields
+  - generated protocol hierarchies for inherited complex types
+  - `maxOccurs="unbounded"` to Swift array mapping
+  - reserved keyword escaping in generated payload models
+
 ### Added (Multi-file plugin output + XML namespace support for root elements)
 
 #### SPM build-tool plugin: multi-file output
