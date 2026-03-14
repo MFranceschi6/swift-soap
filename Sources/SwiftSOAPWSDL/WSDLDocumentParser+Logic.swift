@@ -23,11 +23,12 @@ import SwiftSOAPXML
 // ## XSD type support
 //
 // Only XSD structures commonly found in WSDL 1.1 inline schemas are parsed:
-//   - `<complexType>` with `<sequence>`, `<choice>`, `<attribute>` children
+//   - `<complexType>` with direct or `complexContent/simpleContent` `<extension>`
+//     carrying `<sequence>`, `<choice>`, `<attribute>` children
 //   - `<simpleType>` with `<restriction>` + `<enumeration>` (string enums)
 //   - `<element>` at the schema top level
 // XSD features not used in SOAP/WSDL contexts (e.g., `<group>`, `<any>`,
-// `<extension>`, deep `<redefine>`) are silently skipped.
+// deep `<redefine>`) are silently skipped.
 //
 // ## Name resolution strategy
 //
@@ -304,54 +305,79 @@ extension WSDLDocumentParser {
             throw WSDLParsingError.invalidSchema(name: nil, message: "complexType node is missing required 'name'.")
         }
 
-        let sequenceElements = try complexTypeNode.children()
-            .filter { $0.name == "sequence" }
-            .flatMap { sequenceNode in
-                try sequenceNode.children()
-                    .filter { $0.name == "element" }
-                    .map { elementNode in
-                        try parseSchemaElement(elementNode, namespaceMappings: namespaceMappings)
-                    }
-            }
+        let extensionNode = complexTypeNode.children()
+            .first(where: { $0.name == "complexContent" || $0.name == "simpleContent" })?
+            .children()
+            .first(where: { $0.name == "extension" })
+        let baseQName = try resolveQName(
+            fromQualifiedName: extensionNode?.attribute(named: "base"),
+            namespaceMappings: namespaceMappings,
+            context: "complexType extension base"
+        )
 
-        let choiceElements = try complexTypeNode.children()
-            .filter { $0.name == "choice" }
-            .flatMap { choiceNode in
-                try choiceNode.children()
-                    .filter { $0.name == "element" }
-                    .map { elementNode in
-                        try parseSchemaElement(elementNode, namespaceMappings: namespaceMappings)
-                    }
-            }
-
-        let attributes = try complexTypeNode.children()
-            .filter { $0.name == "attribute" }
-            .map { attributeNode -> WSDLDefinition.Attribute in
-                guard let attributeName = normalized(attributeNode.attribute(named: "name")) else {
-                    throw WSDLParsingError.invalidSchema(
-                        name: name,
-                        message: "complexType '\(name)' has an attribute without required 'name'."
-                    )
-                }
-                let typeQName = try resolveQName(
-                    fromQualifiedName: attributeNode.attribute(named: "type"),
-                    namespaceMappings: namespaceMappings,
-                    context: "schema attribute type"
-                )
-
-                return WSDLDefinition.Attribute(
-                    name: attributeName,
-                    typeQName: typeQName,
-                    use: normalized(attributeNode.attribute(named: "use"))
-                )
-            }
+        let sequenceElements = try parseNestedElements(
+            from: complexTypeNode.children().filter { $0.name == "sequence" } +
+                (extensionNode?.children().filter { $0.name == "sequence" } ?? []),
+            namespaceMappings: namespaceMappings
+        )
+        let choiceElements = try parseNestedElements(
+            from: complexTypeNode.children().filter { $0.name == "choice" } +
+                (extensionNode?.children().filter { $0.name == "choice" } ?? []),
+            namespaceMappings: namespaceMappings
+        )
+        let attributes = try parseAttributes(
+            from: complexTypeNode.children().filter { $0.name == "attribute" } +
+                (extensionNode?.children().filter { $0.name == "attribute" } ?? []),
+            complexTypeName: name,
+            namespaceMappings: namespaceMappings
+        )
 
         return WSDLDefinition.ComplexType(
             name: name,
+            baseQName: baseQName,
             sequence: sequenceElements,
             choice: choiceElements,
             attributes: attributes
         )
+    }
+
+    private func parseNestedElements(
+        from containerNodes: [SwiftSOAPXML.XMLNode],
+        namespaceMappings: [String: String]
+    ) throws -> [WSDLDefinition.Element] {
+        try containerNodes.flatMap { containerNode in
+            try containerNode.children()
+                .filter { $0.name == "element" }
+                .map { elementNode in
+                    try parseSchemaElement(elementNode, namespaceMappings: namespaceMappings)
+                }
+        }
+    }
+
+    private func parseAttributes(
+        from attributeNodes: [SwiftSOAPXML.XMLNode],
+        complexTypeName: String,
+        namespaceMappings: [String: String]
+    ) throws -> [WSDLDefinition.Attribute] {
+        try attributeNodes.map { attributeNode -> WSDLDefinition.Attribute in
+            guard let attributeName = normalized(attributeNode.attribute(named: "name")) else {
+                throw WSDLParsingError.invalidSchema(
+                    name: complexTypeName,
+                    message: "complexType '\(complexTypeName)' has an attribute without required 'name'."
+                )
+            }
+            let typeQName = try resolveQName(
+                fromQualifiedName: attributeNode.attribute(named: "type"),
+                namespaceMappings: namespaceMappings,
+                context: "schema attribute type"
+            )
+
+            return WSDLDefinition.Attribute(
+                name: attributeName,
+                typeQName: typeQName,
+                use: normalized(attributeNode.attribute(named: "use"))
+            )
+        }
     }
 
     private func parseSimpleType(
