@@ -156,7 +156,6 @@ let package = Package(
                 "SwiftSOAPXML",
                 "SwiftSOAPXMLTestSupport",
                 "SwiftSOAPXMLMacros",
-                "SwiftSOAPXMLMacroImplementation",
             ]
         ),
         .testTarget(

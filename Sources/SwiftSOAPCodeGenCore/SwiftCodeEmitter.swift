@@ -404,7 +404,7 @@ private extension SwiftCodeEmitter {
         }
         lines.append("    }")
 
-        if let textField {
+        if let textField = textField {
             lines.append(contentsOf: emitTextBackedCodable(
                 textField: textField,
                 keyedFields: keyedFields
