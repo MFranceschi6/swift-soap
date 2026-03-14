@@ -188,7 +188,7 @@ private extension CodeGenerationIRBuilder {
             for complexType in schema.complexTypes {
                 let complexTypeKey = ComplexTypeKey(name: complexType.name, namespaceURI: schema.targetNamespace)
                 let protocolDescriptor = protocolDescriptors[complexTypeKey]
-                if let protocolDescriptor {
+                if let protocolDescriptor = protocolDescriptor {
                     try ensureUniqueSymbol(protocolDescriptor.protocolName, generatedTypeNames: &generatedTypeNames)
                     generatedProtocols.append(
                         GeneratedProtocolIR(
@@ -965,11 +965,11 @@ private extension CodeGenerationIRBuilder {
         namespaceURI: String?,
         in types: WSDLDefinition.Types
     ) -> (element: WSDLDefinition.Element, namespaceURI: String?)? {
-        guard let localName else {
+        guard let localName = localName else {
             return nil
         }
 
-        if let namespaceURI {
+        if let namespaceURI = namespaceURI {
             for schema in types.schemas where schema.targetNamespace == namespaceURI {
                 if let element = schema.elements.first(where: { $0.name == localName }) {
                     return (element, schema.targetNamespace)
@@ -1002,11 +1002,11 @@ private extension CodeGenerationIRBuilder {
         namespaceURI: String?,
         in types: WSDLDefinition.Types
     ) -> WSDLDefinition.ComplexType? {
-        guard let localName else {
+        guard let localName = localName else {
             return nil
         }
 
-        if let namespaceURI {
+        if let namespaceURI = namespaceURI {
             for schema in types.schemas where schema.targetNamespace == namespaceURI {
                 if let complexType = schema.complexTypes.first(where: { $0.name == localName }) {
                     return complexType
@@ -1028,11 +1028,11 @@ private extension CodeGenerationIRBuilder {
         namespaceURI: String?,
         in types: WSDLDefinition.Types
     ) -> WSDLDefinition.AttributeGroup? {
-        guard let localName else {
+        guard let localName = localName else {
             return nil
         }
 
-        if let namespaceURI {
+        if let namespaceURI = namespaceURI {
             for schema in types.schemas where schema.targetNamespace == namespaceURI {
                 if let attributeGroup = schema.attributeGroups.first(where: { $0.name == localName }) {
                     return attributeGroup
@@ -1054,11 +1054,11 @@ private extension CodeGenerationIRBuilder {
         namespaceURI: String?,
         in types: WSDLDefinition.Types
     ) -> WSDLDefinition.Attribute? {
-        guard let localName else {
+        guard let localName = localName else {
             return nil
         }
 
-        if let namespaceURI {
+        if let namespaceURI = namespaceURI {
             for schema in types.schemas where schema.targetNamespace == namespaceURI {
                 if let attributeDefinition = schema.attributeDefinitions.first(where: { $0.name == localName }) {
                     return attributeDefinition
@@ -1080,7 +1080,7 @@ private extension CodeGenerationIRBuilder {
         namespaceURI: String?,
         in types: WSDLDefinition.Types
     ) -> AttributeGroupKey? {
-        if let namespaceURI {
+        if let namespaceURI = namespaceURI {
             for schema in types.schemas where schema.targetNamespace == namespaceURI {
                 if schema.attributeGroups.contains(where: { $0.name == localName }) {
                     return AttributeGroupKey(name: localName, namespaceURI: schema.targetNamespace)
@@ -1102,7 +1102,7 @@ private extension CodeGenerationIRBuilder {
         namespaceURI: String?,
         in types: WSDLDefinition.Types
     ) -> ComplexTypeKey? {
-        if let namespaceURI {
+        if let namespaceURI = namespaceURI {
             for schema in types.schemas where schema.targetNamespace == namespaceURI {
                 if schema.complexTypes.contains(where: { $0.name == localName }) {
                     return ComplexTypeKey(name: localName, namespaceURI: schema.targetNamespace)
@@ -1152,7 +1152,7 @@ private extension CodeGenerationIRBuilder {
                     try findRequiredComplexTypeKey($0, types: types, context: complexType.name)
                 }
                 let inheritedProtocolNames: [String]
-                if let baseTypeKey, hierarchyKeys.contains(baseTypeKey) {
+                if let baseTypeKey = baseTypeKey, hierarchyKeys.contains(baseTypeKey) {
                     inheritedProtocolNames = [generatedProtocolName(forTypeName: sanitizeTypeName(baseTypeKey.name))]
                 } else {
                     inheritedProtocolNames = []

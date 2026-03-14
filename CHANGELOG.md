@@ -6,6 +6,14 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Fixed (CI lane compatibility)
+- Replaced Swift shorthand optional-binding syntax in `SwiftSOAPCodeGenCore`
+  (`if let value { ... }`, `guard let value else { ... }`) with Swift 5.6-compatible
+  explicit bindings to keep `tooling-5.6+` green.
+- Removed redundant direct test dependency on `SwiftSOAPXMLMacroImplementation` from
+  `Package@swift-5.9.swift`, `Package@swift-6.0.swift`, and `Package@swift-6.1.swift`
+  to avoid duplicate symbol linker failures in `latest-6.2` Linux runs.
+
 ### Added (WSDL hardening for named doc/literal wrappers and XSD extensions)
 
 #### Codegen core
