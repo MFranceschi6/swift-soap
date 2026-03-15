@@ -1,16 +1,16 @@
 # Agent Policy Entry Point (Claude Code)
 
-This repository no longer keeps agent policy in a single monolithic file.
-`agent.md` is the canonical entry point and routing file for all operational rules.
+`CLAUDE.md` is auto-loaded and contains all routine policy. This file is the reference index
+for deep-dive modules — read individual modules only when the task requires it.
 
-## Mandatory Load Order
+## Deep-Dive Modules
 
-1. `Docs/agent/01-project-profile.md`
-2. `Docs/agent/02-engineering-standards.md`
-3. `Docs/agent/03-validation-and-quality-gates.md`
-4. `Docs/agent/04-workflow-reporting-and-commits.md`
-5. `Docs/agent/05-skills-and-context-organization.md`
-6. `Docs/agent/99-agent-policy-changelog.md`
+1. `.claude/agent/01-project-profile.md` — scope, platform, dependency policy
+2. `.claude/agent/02-engineering-standards.md` — API design, file structure, concurrency
+3. `.claude/agent/03-validation-and-quality-gates.md` — coverage targets, test isolation
+4. `.claude/agent/04-workflow-reporting-and-commits.md` — workflow, branching, reporting
+5. `.claude/agent/05-skills-and-context-organization.md` — skill authoring rules
+6. `.claude/agent/99-agent-policy-changelog.md` — policy change history
 
 ## Non-Negotiable Gates
 
@@ -24,17 +24,10 @@ This repository no longer keeps agent policy in a single monolithic file.
 - Never revert unrelated local changes.
 - Do not introduce new dependencies unless justified and documented.
 
-## Context Layout (Claude Code)
+## Skill Registry
 
-- Ephemeral/local agent context: `.claude/`
-- Long-lived technical docs/reports: repository `Docs/` and `.claude/report/` when appropriate.
-- Repository skills: `.claude/skills/<skill-name>/SKILL.md`
-
-## Skill Registry (Current)
+Skills live in `.claude/skills/<skill-name>/SKILL.md`:
 
 - `baseline-validation`
 - `step-report-and-changelog`
 - `commit-checkpoint`
-
-Details and usage rules are defined in:
-- `Docs/agent/05-skills-and-context-organization.md`
