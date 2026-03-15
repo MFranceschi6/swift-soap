@@ -83,6 +83,7 @@ final class SemanticValidationIRTests: XCTestCase {
             moduleName: "Test",
             generationScope: [.client],
             runtimeTargets: [.async],
+            apiStyle: .raw,
             generatedTypes: [
                 GeneratedTypeIR(
                     swiftTypeName: "Status",
@@ -115,6 +116,7 @@ final class SemanticValidationIRTests: XCTestCase {
             moduleName: "Test",
             generationScope: [.client],
             runtimeTargets: [.async],
+            apiStyle: .raw,
             generatedTypes: [
                 GeneratedTypeIR(
                     swiftTypeName: "Payload",
@@ -150,6 +152,7 @@ final class SemanticValidationIRTests: XCTestCase {
             moduleName: "Test",
             generationScope: [.client],
             runtimeTargets: [.async],
+            apiStyle: .raw,
             generatedTypes: [
                 GeneratedTypeIR(
                     swiftTypeName: "ZipCode",
@@ -187,6 +190,7 @@ final class SemanticValidationIRTests: XCTestCase {
             moduleName: "Test",
             generationScope: [.client],
             runtimeTargets: [.async],
+            apiStyle: .raw,
             generatedTypes: [
                 GeneratedTypeIR(
                     swiftTypeName: "Inventory",
@@ -242,6 +246,7 @@ final class SemanticValidationIRTests: XCTestCase {
             moduleName: "Test",
             generationScope: [.client],
             runtimeTargets: [.async],
+            apiStyle: .raw,
             generatedTypes: [
                 GeneratedTypeIR(
                     swiftTypeName: "Payment",
@@ -284,6 +289,7 @@ final class SemanticValidationIRTests: XCTestCase {
             moduleName: "Test",
             generationScope: [.client],
             runtimeTargets: [.async],
+            apiStyle: .raw,
             generatedTypes: [
                 GeneratedTypeIR(
                     swiftTypeName: "Price",
@@ -366,6 +372,7 @@ final class SemanticValidationIRTests: XCTestCase {
             moduleName: "Test",
             generationScope: [.client],
             runtimeTargets: [.async],
+            apiStyle: .raw,
             generatedTypes: [
                 GeneratedTypeIR(
                     swiftTypeName: "ZipCode",

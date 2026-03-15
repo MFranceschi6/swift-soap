@@ -163,7 +163,8 @@ final class CodeGenGoldenSnapshotTests: XCTestCase {
             outputMode: .build,
             runtimeTargets: [.async],
             generationScope: [.client, .server],
-            targetSwiftVersion: targetSwiftVersion
+            targetSwiftVersion: targetSwiftVersion,
+            apiStyle: .raw
         )
 
         return try CodeGenerator().generate(configuration: configuration)

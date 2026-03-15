@@ -121,6 +121,7 @@ public struct CodeGenerationIRBuilder {
             moduleName: sanitizeTypeName(configuration.moduleName),
             generationScope: configuration.generationScope,
             runtimeTargets: configuration.runtimeTargets,
+            apiStyle: configuration.apiStyle,
             generatedProtocols: generatedProtocols,
             generatedTypes: generatedTypes,
             services: services,
@@ -532,6 +533,19 @@ private extension CodeGenerationIRBuilder {
             )
         }
 
+        let mep: SOAPCodeGenerationMEP
+        if operation.inputMessageName != nil && operation.outputMessageName != nil {
+            mep = .requestResponse
+        } else if operation.inputMessageName != nil && operation.outputMessageName == nil {
+            mep = .oneWay
+        } else {
+            throw CodeGenError(
+                code: .invalidInput,
+                message: "Operation '\(serviceName).\(portName).\(operation.name)' has an unsupported MEP (e.g. notification).",
+                suggestion: "Only request-response and one-way operations are supported."
+            )
+        }
+
         let operationContractTypeName = sanitizeTypeName("\(serviceName)\(portName)\(operation.name)Operation")
         try ensureUniqueSymbol(operationContractTypeName, generatedTypeNames: &generatedTypeNames)
 
@@ -543,7 +557,8 @@ private extension CodeGenerationIRBuilder {
             responsePayloadTypeName: responseTypeName,
             faultDetailTypeName: faultDetailTypeName,
             soapAction: bindingOperation?.soapAction,
-            bindingMetadata: resolvedBindingMetadata
+            bindingMetadata: resolvedBindingMetadata,
+            messageExchangePattern: mep
         )
     }
 

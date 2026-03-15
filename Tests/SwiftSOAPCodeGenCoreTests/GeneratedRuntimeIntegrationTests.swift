@@ -182,7 +182,8 @@ final class GeneratedRuntimeIntegrationTests: XCTestCase {
             runtimeTargets: [.async, .nio],
             generationScope: [.client, .server],
             targetSwiftVersion: toolchain.codeGenTargetSwiftVersion,
-            syntaxFeatures: [:]
+            syntaxFeatures: [:],
+            apiStyle: .raw
         )
 
         let generator = CodeGenerator()
