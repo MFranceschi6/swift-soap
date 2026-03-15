@@ -46,4 +46,12 @@ public protocol SOAPOperationContract: Sendable {
     ///
     /// Defaults to `nil` via the extension in ``SOAPOperationContract+Defaults``.
     static var soapAction: SOAPAction? { get }
+
+    /// The SOAP Message Exchange Pattern (MEP) for this operation.
+    ///
+    /// Defaults to `.requestResponse`. Override this to `.oneWay` for operations
+    /// that send a request but do not expect a response payload.
+    ///
+    /// - SeeAlso: ``SOAPMessageExchangePattern``
+    static var messageExchangePattern: SOAPMessageExchangePattern { get }
 }

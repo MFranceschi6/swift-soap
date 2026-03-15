@@ -6,4 +6,13 @@ extension SOAPOperationContract {
     public static var soapAction: SOAPAction? {
         nil
     }
+
+    /// Default `messageExchangePattern` implementation: returns `.requestResponse`.
+    ///
+    /// Override this to `.oneWay` for operations that do not expect a response payload.
+    ///
+    /// - SeeAlso: ``SOAPMessageExchangePattern``
+    public static var messageExchangePattern: SOAPMessageExchangePattern {
+        .requestResponse
+    }
 }

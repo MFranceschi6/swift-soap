@@ -8,10 +8,18 @@ import SwiftSOAPCore
 public typealias SOAPAsyncOperationHandler<Operation: SOAPOperationContract> = @Sendable (
     Operation.RequestPayload
 ) async throws(any Error) -> SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload>
+
+public typealias SOAPAsyncOneWayOperationHandler<Operation: SOAPOperationContract> = @Sendable (
+    Operation.RequestPayload
+) async throws(any Error) -> Void
 #else
 public typealias SOAPAsyncOperationHandler<Operation: SOAPOperationContract> = @Sendable (
     Operation.RequestPayload
 ) async throws -> SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload>
+
+public typealias SOAPAsyncOneWayOperationHandler<Operation: SOAPOperationContract> = @Sendable (
+    Operation.RequestPayload
+) async throws -> Void
 #endif
 
 /// An async SOAP server that dispatches incoming operations to registered handlers.
@@ -45,6 +53,17 @@ public protocol SOAPServerAsync: Sendable {
         handler: @escaping SOAPAsyncOperationHandler<Operation>
     ) async throws(any Error)
 
+    /// Registers a typed handler for the given one-way operation.
+    ///
+    /// - Parameters:
+    ///   - operation: The operation type to handle.
+    ///   - handler: A `Sendable` async closure that receives the request payload.
+    /// - Throws: Any error from the underlying registration mechanism.
+    func registerOneWay<Operation: SOAPOperationContract>(
+        _ operation: Operation.Type,
+        handler: @escaping SOAPAsyncOneWayOperationHandler<Operation>
+    ) async throws(any Error)
+
     /// Starts the server and begins accepting requests.
     ///
     /// - Throws: Any error from the underlying transport start.
@@ -66,6 +85,17 @@ public protocol SOAPServerAsync: Sendable {
         handler: @escaping SOAPAsyncOperationHandler<Operation>
     ) async throws
 
+    /// Registers a typed handler for the given one-way operation.
+    ///
+    /// - Parameters:
+    ///   - operation: The operation type to handle.
+    ///   - handler: A `Sendable` async closure that receives the request payload.
+    /// - Throws: Any error from the underlying registration mechanism.
+    func registerOneWay<Operation: SOAPOperationContract>(
+        _ operation: Operation.Type,
+        handler: @escaping SOAPAsyncOneWayOperationHandler<Operation>
+    ) async throws
+
     /// Starts the server and begins accepting requests.
     ///
     /// - Throws: Any error from the underlying transport start.
@@ -75,5 +105,47 @@ public protocol SOAPServerAsync: Sendable {
     ///
     /// - Throws: Any error from the underlying transport stop.
     func stop() async throws
+    #endif
+}
+
+extension SOAPServerAsync {
+    #if swift(>=6.0)
+    public func registerOneWay<Operation: SOAPOperationContract>(
+        _ operation: Operation.Type,
+        handler: @escaping SOAPAsyncOneWayOperationHandler<Operation>
+    ) async throws(any Error) {
+        try await register(operation) { request in
+            do {
+                try await handler(request)
+                // For a one-way operation, the framework adapter ignores the response payload.
+                // We emit a dummy payload structure to satisfy the type system.
+                // In practice, since oneWay operations don't return <output>, the generated
+                // ResponsePayload will be SOAPEmptyPayload.
+                // swiftlint:disable:next force_cast
+                return .success(SOAPEmptyPayload() as! Operation.ResponsePayload)
+            } catch let fault as SOAPFaultError<Operation.FaultDetailPayload> {
+                return .fault(fault.fault)
+            } catch {
+                throw error
+            }
+        }
+    }
+    #else
+    public func registerOneWay<Operation: SOAPOperationContract>(
+        _ operation: Operation.Type,
+        handler: @escaping SOAPAsyncOneWayOperationHandler<Operation>
+    ) async throws {
+        try await register(operation) { request in
+            do {
+                try await handler(request)
+                // swiftlint:disable:next force_cast
+                return .success(SOAPEmptyPayload() as! Operation.ResponsePayload)
+            } catch let fault as SOAPFaultError<Operation.FaultDetailPayload> {
+                return .fault(fault.fault)
+            } catch {
+                throw error
+            }
+        }
+    }
     #endif
 }

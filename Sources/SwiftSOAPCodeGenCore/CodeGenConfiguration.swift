@@ -16,6 +16,12 @@ public enum CodeGenerationOutputMode: String, Codable, Sendable, CaseIterable {
     case both
 }
 
+public enum CodeGenerationAPIStyle: String, Codable, Sendable, CaseIterable {
+    case raw
+    case ergonomic
+    case both
+}
+
 public struct SwiftLanguageVersion: Sendable, Equatable, Hashable, Comparable, Codable {
     public let major: Int
     public let minor: Int
@@ -196,6 +202,7 @@ public struct CodeGenConfiguration: Codable, Sendable, Equatable {
     public var targetSwiftVersion: SwiftLanguageVersion
     public var syntaxFeatures: [String: Bool]
     public var validationProfile: ValidationProfile
+    public var apiStyle: CodeGenerationAPIStyle
 
     public init(
         wsdlPath: String,
@@ -207,7 +214,8 @@ public struct CodeGenConfiguration: Codable, Sendable, Equatable {
         generationScope: Set<CodeGenerationScopeOption> = [.client],
         targetSwiftVersion: SwiftLanguageVersion,
         syntaxFeatures: [String: Bool] = [:],
-        validationProfile: ValidationProfile = .strict
+        validationProfile: ValidationProfile = .strict,
+        apiStyle: CodeGenerationAPIStyle = .both
     ) {
         self.wsdlPath = wsdlPath
         self.moduleName = moduleName
@@ -219,6 +227,7 @@ public struct CodeGenConfiguration: Codable, Sendable, Equatable {
         self.targetSwiftVersion = targetSwiftVersion
         self.syntaxFeatures = syntaxFeatures
         self.validationProfile = validationProfile
+        self.apiStyle = apiStyle
     }
 
     public init(from decoder: Decoder) throws {
@@ -233,6 +242,7 @@ public struct CodeGenConfiguration: Codable, Sendable, Equatable {
         targetSwiftVersion = try container.decode(SwiftLanguageVersion.self, forKey: .targetSwiftVersion)
         syntaxFeatures = try container.decodeIfPresent([String: Bool].self, forKey: .syntaxFeatures) ?? [:]
         validationProfile = try container.decodeIfPresent(ValidationProfile.self, forKey: .validationProfile) ?? .strict
+        apiStyle = try container.decodeIfPresent(CodeGenerationAPIStyle.self, forKey: .apiStyle) ?? .both
     }
 }
 
@@ -247,6 +257,7 @@ public struct CodeGenConfigurationOverrides: Sendable, Equatable {
     public var targetSwiftVersion: SwiftLanguageVersion?
     public var syntaxFeatures: [String: Bool]
     public var validationProfile: ValidationProfile?
+    public var apiStyle: CodeGenerationAPIStyle?
 
     public init() {
         syntaxFeatures = [:]
@@ -284,6 +295,9 @@ public extension CodeGenConfiguration {
         }
         if let validationProfile = overrides.validationProfile {
             self.validationProfile = validationProfile
+        }
+        if let apiStyle = overrides.apiStyle {
+            self.apiStyle = apiStyle
         }
     }
 

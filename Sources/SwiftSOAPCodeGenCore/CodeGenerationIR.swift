@@ -5,6 +5,7 @@ public struct SOAPCodeGenerationIR: Sendable, Equatable {
     public let moduleName: String
     public let generationScope: Set<CodeGenerationScopeOption>
     public let runtimeTargets: Set<CodeGenerationRuntimeTargetOption>
+    public let apiStyle: CodeGenerationAPIStyle
     public let generatedProtocols: [GeneratedProtocolIR]
     public let generatedTypes: [GeneratedTypeIR]
     public let services: [ServiceIR]
@@ -14,6 +15,7 @@ public struct SOAPCodeGenerationIR: Sendable, Equatable {
         moduleName: String,
         generationScope: Set<CodeGenerationScopeOption>,
         runtimeTargets: Set<CodeGenerationRuntimeTargetOption>,
+        apiStyle: CodeGenerationAPIStyle,
         generatedProtocols: [GeneratedProtocolIR] = [],
         generatedTypes: [GeneratedTypeIR],
         services: [ServiceIR],
@@ -22,6 +24,7 @@ public struct SOAPCodeGenerationIR: Sendable, Equatable {
         self.moduleName = moduleName
         self.generationScope = generationScope
         self.runtimeTargets = runtimeTargets
+        self.apiStyle = apiStyle
         self.generatedProtocols = generatedProtocols
         self.generatedTypes = generatedTypes
         self.services = services
@@ -202,6 +205,8 @@ public struct OperationIR: Sendable, Equatable {
     public let faultDetailTypeName: String
     public let soapAction: String?
     public let bindingMetadata: BindingMetadataIR
+    /// The SOAP Message Exchange Pattern for this operation.
+    public let messageExchangePattern: SOAPCodeGenerationMEP
 
     public init(
         swiftMethodName: String,
@@ -211,7 +216,8 @@ public struct OperationIR: Sendable, Equatable {
         responsePayloadTypeName: String,
         faultDetailTypeName: String,
         soapAction: String?,
-        bindingMetadata: BindingMetadataIR
+        bindingMetadata: BindingMetadataIR,
+        messageExchangePattern: SOAPCodeGenerationMEP = .requestResponse
     ) {
         self.swiftMethodName = swiftMethodName
         self.operationContractTypeName = operationContractTypeName
@@ -221,6 +227,7 @@ public struct OperationIR: Sendable, Equatable {
         self.faultDetailTypeName = faultDetailTypeName
         self.soapAction = soapAction
         self.bindingMetadata = bindingMetadata
+        self.messageExchangePattern = messageExchangePattern
     }
 }
 
@@ -238,4 +245,9 @@ public struct BindingMetadataIR: Sendable, Equatable {
         self.style = style
         self.bodyUse = bodyUse
     }
+}
+
+public enum SOAPCodeGenerationMEP: String, Sendable, Equatable {
+    case requestResponse
+    case oneWay
 }

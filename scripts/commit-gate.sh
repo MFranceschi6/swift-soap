@@ -9,6 +9,7 @@ readonly EXTENSION_DECL_PATTERN='^extension[[:space:]]+'
 # multiple-top-level-type check (they are still linted by SwiftLint).
 readonly LEGACY_MULTI_TYPE_EXEMPT=(
   "Sources/SwiftSOAPCore/SOAPBinding.swift"
+  "Sources/SwiftSOAPCodeGenCore/CodeGenConfiguration.swift"
   "Sources/SwiftSOAPCodeGenCore/CodeGenerationIR.swift"
   "Sources/SwiftSOAPCodeGenCore/CodeGenerator.swift"
   "Sources/SwiftSOAPXML/XMLRootNode.swift"

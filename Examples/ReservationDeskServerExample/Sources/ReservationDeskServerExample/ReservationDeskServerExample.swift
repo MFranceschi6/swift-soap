@@ -139,7 +139,7 @@ private struct AsyncReservationService: ReservationDeskAgentPortAsyncService {
 
     func createReservation(
         request: CreateReservationRequestPayload
-    ) async throws(any Error) -> SOAPOperationResponse<CreateReservationResponsePayload, ReservationProblemFaultDetail> {
+    ) async throws(any Error) -> CreateReservationResponsePayload {
         switch ledger.createReservation(
             guestEmail: request.guestEmail,
             roomCode: request.roomCode,
@@ -147,34 +147,32 @@ private struct AsyncReservationService: ReservationDeskAgentPortAsyncService {
             nights: request.nights
         ) {
         case .success(let record):
-            return .success(
-                CreateReservationResponsePayload(
-                    reservationId: record.id,
-                    status: record.status,
-                    quotedAmount: record.quotedAmount
-                )
+            return CreateReservationResponsePayload(
+                reservationId: record.id,
+                status: record.status,
+                quotedAmount: record.quotedAmount
             )
         case .failure(let problem):
-            return .fault(try makeReservationFault(problem))
+            throw SOAPFaultError(fault: try makeReservationFault(problem))
         }
     }
 
     func appendReservationNote(
         request: AppendReservationNoteRequestPayload
-    ) async throws(any Error) -> SOAPOperationResponse<AppendReservationNoteResponsePayload, SOAPEmptyFaultDetailPayload> {
+    ) async throws(any Error) -> AppendReservationNoteResponsePayload {
         _ = ledger.appendReservationNote(
             reservationId: request.reservationId,
             author: request.author,
             note: request.note
         )
-        return .success(AppendReservationNoteResponsePayload())
+        return AppendReservationNoteResponsePayload()
     }
 
     func getReservationTimeline(
         request: GetReservationTimelineRequestPayload
-    ) async throws(any Error) -> SOAPOperationResponse<GetReservationTimelineResponsePayload, SOAPEmptyFaultDetailPayload> {
+    ) async throws(any Error) -> GetReservationTimelineResponsePayload {
         let record = ledger.reservation(for: request.reservationId)
-        let payload = GetReservationTimelineResponsePayload(
+        return GetReservationTimelineResponsePayload(
             reservationId: request.reservationId,
             status: record?.status ?? "missing",
             events: record?.events.map {
@@ -185,23 +183,20 @@ private struct AsyncReservationService: ReservationDeskAgentPortAsyncService {
                 )
             }
         )
-        return .success(payload)
     }
 
     func cancelReservation(
         request: CancelReservationRequestPayload
-    ) async throws(any Error) -> SOAPOperationResponse<CancelReservationResponsePayload, ReservationProblemFaultDetail> {
+    ) async throws(any Error) -> CancelReservationResponsePayload {
         switch ledger.cancelReservation(reservationId: request.reservationId, reason: request.reason) {
         case .success(let cancellation):
-            return .success(
-                CancelReservationResponsePayload(
-                    reservationId: cancellation.reservationId,
-                    cancelledAt: cancellation.cancelledAt,
-                    refundAmount: cancellation.refundAmount
-                )
+            return CancelReservationResponsePayload(
+                reservationId: cancellation.reservationId,
+                cancelledAt: cancellation.cancelledAt,
+                refundAmount: cancellation.refundAmount
             )
         case .failure(let problem):
-            return .fault(try makeReservationFault(problem))
+            throw SOAPFaultError(fault: try makeReservationFault(problem))
         }
     }
 }
@@ -216,7 +211,7 @@ private final class NIOReservationService: ReservationDeskAgentPortNIOService {
     func createReservation(
         request: CreateReservationRequestPayload,
         on eventLoop: EventLoop
-    ) -> EventLoopFuture<SOAPOperationResponse<CreateReservationResponsePayload, ReservationProblemFaultDetail>> {
+    ) -> EventLoopFuture<CreateReservationResponsePayload> {
         switch ledger.createReservation(
             guestEmail: request.guestEmail,
             roomCode: request.roomCode,
@@ -225,17 +220,15 @@ private final class NIOReservationService: ReservationDeskAgentPortNIOService {
         ) {
         case .success(let record):
             return eventLoop.makeSucceededFuture(
-                .success(
-                    CreateReservationResponsePayload(
-                        reservationId: record.id,
-                        status: record.status,
-                        quotedAmount: record.quotedAmount
-                    )
+                CreateReservationResponsePayload(
+                    reservationId: record.id,
+                    status: record.status,
+                    quotedAmount: record.quotedAmount
                 )
             )
         case .failure(let problem):
             do {
-                return eventLoop.makeSucceededFuture(.fault(try makeReservationFault(problem)))
+                return eventLoop.makeFailedFuture(SOAPFaultError(fault: try makeReservationFault(problem)))
             } catch {
                 return eventLoop.makeFailedFuture(error)
             }
@@ -245,19 +238,19 @@ private final class NIOReservationService: ReservationDeskAgentPortNIOService {
     func appendReservationNote(
         request: AppendReservationNoteRequestPayload,
         on eventLoop: EventLoop
-    ) -> EventLoopFuture<SOAPOperationResponse<AppendReservationNoteResponsePayload, SOAPEmptyFaultDetailPayload>> {
+    ) -> EventLoopFuture<AppendReservationNoteResponsePayload> {
         _ = ledger.appendReservationNote(
             reservationId: request.reservationId,
             author: request.author,
             note: request.note
         )
-        return eventLoop.makeSucceededFuture(.success(AppendReservationNoteResponsePayload()))
+        return eventLoop.makeSucceededFuture(AppendReservationNoteResponsePayload())
     }
 
     func getReservationTimeline(
         request: GetReservationTimelineRequestPayload,
         on eventLoop: EventLoop
-    ) -> EventLoopFuture<SOAPOperationResponse<GetReservationTimelineResponsePayload, SOAPEmptyFaultDetailPayload>> {
+    ) -> EventLoopFuture<GetReservationTimelineResponsePayload> {
         let record = ledger.reservation(for: request.reservationId)
         let payload = GetReservationTimelineResponsePayload(
             reservationId: request.reservationId,
@@ -270,27 +263,25 @@ private final class NIOReservationService: ReservationDeskAgentPortNIOService {
                 )
             }
         )
-        return eventLoop.makeSucceededFuture(.success(payload))
+        return eventLoop.makeSucceededFuture(payload)
     }
 
     func cancelReservation(
         request: CancelReservationRequestPayload,
         on eventLoop: EventLoop
-    ) -> EventLoopFuture<SOAPOperationResponse<CancelReservationResponsePayload, ReservationProblemFaultDetail>> {
+    ) -> EventLoopFuture<CancelReservationResponsePayload> {
         switch ledger.cancelReservation(reservationId: request.reservationId, reason: request.reason) {
         case .success(let cancellation):
             return eventLoop.makeSucceededFuture(
-                .success(
-                    CancelReservationResponsePayload(
-                        reservationId: cancellation.reservationId,
-                        cancelledAt: cancellation.cancelledAt,
-                        refundAmount: cancellation.refundAmount
-                    )
+                CancelReservationResponsePayload(
+                    reservationId: cancellation.reservationId,
+                    cancelledAt: cancellation.cancelledAt,
+                    refundAmount: cancellation.refundAmount
                 )
             )
         case .failure(let problem):
             do {
-                return eventLoop.makeSucceededFuture(.fault(try makeReservationFault(problem)))
+                return eventLoop.makeFailedFuture(SOAPFaultError(fault: try makeReservationFault(problem)))
             } catch {
                 return eventLoop.makeFailedFuture(error)
             }

@@ -28,45 +28,35 @@ struct CalculatorDemo {
         )
 
         // Add: 10 + 5
-        let addResponse = try await calculator.add(request: AddSoapInPayload(intA: 10, intB: 5))
-        switch addResponse {
-        case .success(let result):
+        do {
+            let result = try await calculator.add(request: AddSoapInPayload(intA: 10, intB: 5))
             print("10 + 5 =", result.addResult ?? -1)
-        case .fault(let fault):
-            print("Add fault:", fault.faultString)
+        } catch {
+            print("Add error:", error)
         }
 
         // Subtract: 10 - 5
-        let subtractResponse = try await calculator.subtract(
-            request: SubtractSoapInPayload(intA: 10, intB: 5)
-        )
-        switch subtractResponse {
-        case .success(let result):
+        do {
+            let result = try await calculator.subtract(request: SubtractSoapInPayload(intA: 10, intB: 5))
             print("10 - 5 =", result.subtractResult ?? -1)
-        case .fault(let fault):
-            print("Subtract fault:", fault.faultString)
+        } catch {
+            print("Subtract error:", error)
         }
 
         // Multiply: 10 * 5
-        let multiplyResponse = try await calculator.multiply(
-            request: MultiplySoapInPayload(intA: 10, intB: 5)
-        )
-        switch multiplyResponse {
-        case .success(let result):
+        do {
+            let result = try await calculator.multiply(request: MultiplySoapInPayload(intA: 10, intB: 5))
             print("10 * 5 =", result.multiplyResult ?? -1)
-        case .fault(let fault):
-            print("Multiply fault:", fault.faultString)
+        } catch {
+            print("Multiply error:", error)
         }
 
         // Divide: 10 / 5
-        let divideResponse = try await calculator.divide(
-            request: DivideSoapInPayload(intA: 10, intB: 0)
-        )
-        switch divideResponse {
-        case .success(let result):
+        do {
+            let result = try await calculator.divide(request: DivideSoapInPayload(intA: 10, intB: 5))
             print("10 / 5 =", result.divideResult ?? -1)
-        case .fault(let fault):
-            print("Divide fault:", fault.faultString)
+        } catch {
+            print("Divide error:", error)
         }
     }
 }

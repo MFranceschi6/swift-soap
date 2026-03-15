@@ -25,8 +25,8 @@ public struct SwiftCodeEmitter: SwiftSourceEmitter {
             syntaxProfile: syntaxProfile
         ))
         artifacts.append(contentsOf: emitOperationsArtifacts(ir: ir, fileHeader: fileHeader))
-        artifacts.append(contentsOf: emitClientArtifacts(ir: ir, fileHeader: fileHeader, syntaxProfile: syntaxProfile))
-        artifacts.append(contentsOf: emitServerArtifacts(ir: ir, fileHeader: fileHeader, syntaxProfile: syntaxProfile))
+        artifacts.append(contentsOf: emitClientArtifacts(ir: ir, fileHeader: fileHeader, syntaxProfile: syntaxProfile, apiStyle: ir.apiStyle))
+        artifacts.append(contentsOf: emitServerArtifacts(ir: ir, fileHeader: fileHeader, syntaxProfile: syntaxProfile, apiStyle: ir.apiStyle))
 
         return artifacts
     }
@@ -110,8 +110,10 @@ private extension SwiftCodeEmitter {
     func emitClientArtifacts(
         ir: SOAPCodeGenerationIR,
         fileHeader: String,
-        syntaxProfile: CodeGenerationSyntaxProfile
+        syntaxProfile: CodeGenerationSyntaxProfile,
+        apiStyle: CodeGenerationAPIStyle
     ) -> [GeneratedSourceArtifact] {
+
         var artifacts: [GeneratedSourceArtifact] = []
         guard ir.generationScope.contains(.client) else { return artifacts }
 
@@ -125,7 +127,7 @@ private extension SwiftCodeEmitter {
                     lines.append("")
                     lines.append(fileHeader)
                     lines.append("")
-                    lines.append(contentsOf: emitAsyncClientLines(service: service, port: port, syntaxProfile: syntaxProfile))
+                    lines.append(contentsOf: emitAsyncClientLines(service: service, port: port, syntaxProfile: syntaxProfile, apiStyle: apiStyle))
                     lines.append("")
                     artifacts.append(GeneratedSourceArtifact(
                         fileName: "\(service.swiftTypeName)\(port.swiftTypeName)AsyncClient.swift",
@@ -146,7 +148,7 @@ private extension SwiftCodeEmitter {
                     lines.append("")
                     lines.append(fileHeader)
                     lines.append("")
-                    lines.append(contentsOf: emitNIOClientLines(service: service, port: port, syntaxProfile: syntaxProfile))
+                    lines.append(contentsOf: emitNIOClientLines(service: service, port: port, syntaxProfile: syntaxProfile, apiStyle: apiStyle))
                     lines.append("")
                     artifacts.append(GeneratedSourceArtifact(
                         fileName: "\(service.swiftTypeName)\(port.swiftTypeName)NIOClient.swift",
@@ -162,7 +164,8 @@ private extension SwiftCodeEmitter {
     func emitServerArtifacts(
         ir: SOAPCodeGenerationIR,
         fileHeader: String,
-        syntaxProfile: CodeGenerationSyntaxProfile
+        syntaxProfile: CodeGenerationSyntaxProfile,
+        apiStyle: CodeGenerationAPIStyle
     ) -> [GeneratedSourceArtifact] {
         var artifacts: [GeneratedSourceArtifact] = []
         guard ir.generationScope.contains(.server) else { return artifacts }
@@ -177,7 +180,7 @@ private extension SwiftCodeEmitter {
                     lines.append("")
                     lines.append(fileHeader)
                     lines.append("")
-                    lines.append(contentsOf: emitAsyncServerLines(service: service, port: port, syntaxProfile: syntaxProfile))
+                    lines.append(contentsOf: emitAsyncServerLines(service: service, port: port, syntaxProfile: syntaxProfile, apiStyle: apiStyle))
                     lines.append("")
                     artifacts.append(GeneratedSourceArtifact(
                         fileName: "\(service.swiftTypeName)\(port.swiftTypeName)AsyncServer.swift",
@@ -198,7 +201,7 @@ private extension SwiftCodeEmitter {
                     lines.append("")
                     lines.append(fileHeader)
                     lines.append("")
-                    lines.append(contentsOf: emitNIOServerLines(service: service, port: port, syntaxProfile: syntaxProfile))
+                    lines.append(contentsOf: emitNIOServerLines(service: service, port: port, syntaxProfile: syntaxProfile, apiStyle: apiStyle))
                     lines.append("")
                     artifacts.append(GeneratedSourceArtifact(
                         fileName: "\(service.swiftTypeName)\(port.swiftTypeName)NIOServer.swift",
@@ -891,6 +894,14 @@ private extension SwiftCodeEmitter {
             lines.append("        nil")
         }
         lines.append("    }")
+        
+        if operation.messageExchangePattern == .oneWay {
+            lines.append("")
+            lines.append("    public static var messageExchangePattern: SOAPMessageExchangePattern {")
+            lines.append("        .oneWay")
+            lines.append("    }")
+        }
+
         lines.append("")
         lines.append("    public static var bindingMetadata: SOAPBindingMetadata {")
         lines.append("        SOAPBindingMetadata(")
@@ -910,11 +921,14 @@ private extension SwiftCodeEmitter {
     func emitAsyncClientLines(
         service: ServiceIR,
         port: ServicePortIR,
-        syntaxProfile: CodeGenerationSyntaxProfile
+        syntaxProfile: CodeGenerationSyntaxProfile,
+        apiStyle: CodeGenerationAPIStyle
     ) -> [String] {
         let throwsClause = throwsClause(syntaxProfile: syntaxProfile)
         let clientType = existentialType("SOAPClientAsync", syntaxProfile: syntaxProfile)
         let clientTypeName = "\(service.swiftTypeName)\(port.swiftTypeName)AsyncClient"
+        let generateRaw = apiStyle == .raw || apiStyle == .both
+        let generateErgonomic = apiStyle == .ergonomic || apiStyle == .both
 
         var lines: [String] = []
         lines.append("public struct \(clientTypeName): Sendable {")
@@ -927,11 +941,37 @@ private extension SwiftCodeEmitter {
         lines.append("    }")
         lines.append("")
         for operation in port.operations {
-            lines.append("    public func \(operation.swiftMethodName)(request: \(operation.requestPayloadTypeName)) async \(throwsClause) -> SOAPOperationResponse<\(operation.responsePayloadTypeName), \(operation.faultDetailTypeName)> {")
-            lines.append("        try \(operation.operationContractTypeName).validateBinding()")
-            lines.append("        return try await client.invoke(\(operation.operationContractTypeName).self, request: request, endpointURL: endpointURL)")
-            lines.append("    }")
-            lines.append("")
+            if generateErgonomic {
+                let methodName = operation.swiftMethodName
+                if operation.messageExchangePattern == .oneWay {
+                    lines.append("    public func \(methodName)(request: \(operation.requestPayloadTypeName)) async \(throwsClause) {")
+                    lines.append("        try \(operation.operationContractTypeName).validateBinding()")
+                    lines.append("        try await client.invokeOneWay(\(operation.operationContractTypeName).self, request: request, endpointURL: endpointURL)")
+                    lines.append("    }")
+                } else {
+                    lines.append("    public func \(methodName)(request: \(operation.requestPayloadTypeName)) async \(throwsClause) -> \(operation.responsePayloadTypeName) {")
+                    lines.append("        try \(operation.operationContractTypeName).validateBinding()")
+                    lines.append("        return try await client.invoke(\(operation.operationContractTypeName).self, request: request, endpointURL: endpointURL)")
+                    lines.append("    }")
+                }
+                lines.append("")
+            }
+
+            if generateRaw {
+                let methodName = apiStyle == .both ? "\(operation.swiftMethodName)Raw" : operation.swiftMethodName
+                if operation.messageExchangePattern == .oneWay {
+                    lines.append("    public func \(methodName)(request: \(operation.requestPayloadTypeName)) async \(throwsClause) {")
+                    lines.append("        try \(operation.operationContractTypeName).validateBinding()")
+                    lines.append("        try await client.invokeOneWay(\(operation.operationContractTypeName).self, request: request, endpointURL: endpointURL)")
+                    lines.append("    }")
+                } else {
+                    lines.append("    public func \(methodName)(request: \(operation.requestPayloadTypeName)) async \(throwsClause) -> SOAPOperationResponse<\(operation.responsePayloadTypeName), \(operation.faultDetailTypeName)> {")
+                    lines.append("        try \(operation.operationContractTypeName).validateBinding()")
+                    lines.append("        return try await client.invoke(\(operation.operationContractTypeName).self, request: request, endpointURL: endpointURL)")
+                    lines.append("    }")
+                }
+                lines.append("")
+            }
         }
         lines.append("}")
         return lines
@@ -940,10 +980,13 @@ private extension SwiftCodeEmitter {
     func emitNIOClientLines(
         service: ServiceIR,
         port: ServicePortIR,
-        syntaxProfile: CodeGenerationSyntaxProfile
+        syntaxProfile: CodeGenerationSyntaxProfile,
+        apiStyle: CodeGenerationAPIStyle
     ) -> [String] {
         let clientType = existentialType("SOAPClientNIO", syntaxProfile: syntaxProfile)
         let clientTypeName = "\(service.swiftTypeName)\(port.swiftTypeName)NIOClient"
+        let generateRaw = apiStyle == .raw || apiStyle == .both
+        let generateErgonomic = apiStyle == .ergonomic || apiStyle == .both
 
         var lines: [String] = []
         lines.append("public struct \(clientTypeName) {")
@@ -956,15 +999,53 @@ private extension SwiftCodeEmitter {
         lines.append("    }")
         lines.append("")
         for operation in port.operations {
-            lines.append("    public func \(operation.swiftMethodName)(request: \(operation.requestPayloadTypeName), on eventLoop: EventLoop) -> EventLoopFuture<SOAPOperationResponse<\(operation.responsePayloadTypeName), \(operation.faultDetailTypeName)>> {")
-            lines.append("        do {")
-            lines.append("            try \(operation.operationContractTypeName).validateBinding()")
-            lines.append("        } catch {")
-            lines.append("            return eventLoop.makeFailedFuture(error)")
-            lines.append("        }")
-            lines.append("        return client.invoke(\(operation.operationContractTypeName).self, request: request, endpointURL: endpointURL, on: eventLoop)")
-            lines.append("    }")
-            lines.append("")
+            if generateErgonomic {
+                let methodName = operation.swiftMethodName
+                if operation.messageExchangePattern == .oneWay {
+                    lines.append("    public func \(methodName)(request: \(operation.requestPayloadTypeName), on eventLoop: EventLoop) -> EventLoopFuture<Void> {")
+                    lines.append("        do {")
+                    lines.append("            try \(operation.operationContractTypeName).validateBinding()")
+                    lines.append("        } catch {")
+                    lines.append("            return eventLoop.makeFailedFuture(error)")
+                    lines.append("        }")
+                    lines.append("        return client.invokeOneWay(\(operation.operationContractTypeName).self, request: request, endpointURL: endpointURL, on: eventLoop)")
+                    lines.append("    }")
+                } else {
+                    lines.append("    public func \(methodName)(request: \(operation.requestPayloadTypeName), on eventLoop: EventLoop) -> EventLoopFuture<\(operation.responsePayloadTypeName)> {")
+                    lines.append("        do {")
+                    lines.append("            try \(operation.operationContractTypeName).validateBinding()")
+                    lines.append("        } catch {")
+                    lines.append("            return eventLoop.makeFailedFuture(error)")
+                    lines.append("        }")
+                    lines.append("        return client.invoke(\(operation.operationContractTypeName).self, request: request, endpointURL: endpointURL, on: eventLoop)")
+                    lines.append("    }")
+                }
+                lines.append("")
+            }
+
+            if generateRaw {
+                let methodName = apiStyle == .both ? "\(operation.swiftMethodName)Raw" : operation.swiftMethodName
+                if operation.messageExchangePattern == .oneWay {
+                    lines.append("    public func \(methodName)(request: \(operation.requestPayloadTypeName), on eventLoop: EventLoop) -> EventLoopFuture<Void> {")
+                    lines.append("        do {")
+                    lines.append("            try \(operation.operationContractTypeName).validateBinding()")
+                    lines.append("        } catch {")
+                    lines.append("            return eventLoop.makeFailedFuture(error)")
+                    lines.append("        }")
+                    lines.append("        return client.invokeOneWay(\(operation.operationContractTypeName).self, request: request, endpointURL: endpointURL, on: eventLoop)")
+                    lines.append("    }")
+                } else {
+                    lines.append("    public func \(methodName)(request: \(operation.requestPayloadTypeName), on eventLoop: EventLoop) -> EventLoopFuture<SOAPOperationResponse<\(operation.responsePayloadTypeName), \(operation.faultDetailTypeName)>> {")
+                    lines.append("        do {")
+                    lines.append("            try \(operation.operationContractTypeName).validateBinding()")
+                    lines.append("        } catch {")
+                    lines.append("            return eventLoop.makeFailedFuture(error)")
+                    lines.append("        }")
+                    lines.append("        return client.invoke(\(operation.operationContractTypeName).self, request: request, endpointURL: endpointURL, on: eventLoop)")
+                    lines.append("    }")
+                }
+                lines.append("")
+            }
         }
         lines.append("}")
         return lines
@@ -977,20 +1058,40 @@ private extension SwiftCodeEmitter {
     func emitAsyncServerLines(
         service: ServiceIR,
         port: ServicePortIR,
-        syntaxProfile: CodeGenerationSyntaxProfile
+        syntaxProfile: CodeGenerationSyntaxProfile,
+        apiStyle: CodeGenerationAPIStyle
     ) -> [String] {
         let throwsClause = throwsClause(syntaxProfile: syntaxProfile)
         let implementationTypePrefix = existentialTypePrefix(syntaxProfile: syntaxProfile)
         let serverType = existentialType("SOAPServerAsync", syntaxProfile: syntaxProfile)
         let protocolTypeName = "\(service.swiftTypeName)\(port.swiftTypeName)AsyncService"
         let registrarTypeName = "\(service.swiftTypeName)\(port.swiftTypeName)AsyncServerRegistrar"
+        let generateRaw = apiStyle == .raw || apiStyle == .both
+        let generateErgonomic = apiStyle == .ergonomic || apiStyle == .both
 
         var lines: [String] = []
-        lines.append("public protocol \(protocolTypeName): Sendable {")
-        for operation in port.operations {
-            lines.append("    func \(operation.swiftMethodName)(request: \(operation.requestPayloadTypeName)) async \(throwsClause) -> SOAPOperationResponse<\(operation.responsePayloadTypeName), \(operation.faultDetailTypeName)>")
+        if generateErgonomic {
+            lines.append("public protocol \(protocolTypeName): Sendable {")
+            for operation in port.operations {
+                if operation.messageExchangePattern == .oneWay {
+                    lines.append("    func \(operation.swiftMethodName)(request: \(operation.requestPayloadTypeName)) async \(throwsClause)")
+                } else {
+                    lines.append("    func \(operation.swiftMethodName)(request: \(operation.requestPayloadTypeName)) async \(throwsClause) -> \(operation.responsePayloadTypeName)")
+                }
+            }
+            lines.append("}")
         }
-        lines.append("}")
+
+        if generateRaw {
+            let rawProtocolName = apiStyle == .both ? "\(protocolTypeName)Raw" : protocolTypeName
+            lines.append("")
+            lines.append("public protocol \(rawProtocolName): Sendable {")
+            for operation in port.operations {
+                lines.append("    func \(operation.swiftMethodName)(request: \(operation.requestPayloadTypeName)) async \(throwsClause) -> SOAPOperationResponse<\(operation.responsePayloadTypeName), \(operation.faultDetailTypeName)>")
+            }
+            lines.append("}")
+        }
+
         lines.append("")
         lines.append("public struct \(registrarTypeName): Sendable {")
         lines.append("    public let server: \(serverType)")
@@ -999,14 +1100,52 @@ private extension SwiftCodeEmitter {
         lines.append("        self.server = server")
         lines.append("    }")
         lines.append("")
-        lines.append("    public func register(implementation: \(implementationTypePrefix)\(protocolTypeName)) async \(throwsClause) {")
-        for operation in port.operations {
-            lines.append("        try \(operation.operationContractTypeName).validateBinding()")
-            lines.append("        try await server.register(\(operation.operationContractTypeName).self) { request in")
-            lines.append("            try await implementation.\(operation.swiftMethodName)(request: request)")
-            lines.append("        }")
+        
+        if generateErgonomic {
+            lines.append("    public func register(implementation: \(implementationTypePrefix)\(protocolTypeName)) async \(throwsClause) {")
+            for operation in port.operations {
+                lines.append("        try \(operation.operationContractTypeName).validateBinding()")
+                
+                if operation.messageExchangePattern == .oneWay {
+                    lines.append("        try await server.registerOneWay(\(operation.operationContractTypeName).self) { request in")
+                    lines.append("            try await implementation.\(operation.swiftMethodName)(request: request)")
+                    lines.append("        }")
+                } else {
+                    lines.append("        try await server.register(\(operation.operationContractTypeName).self) { request in")
+                    lines.append("            do {")
+                    lines.append("                let response = try await implementation.\(operation.swiftMethodName)(request: request)")
+                    lines.append("                return .success(response)")
+                    lines.append("            } catch let error as SOAPFaultError<\(operation.faultDetailTypeName)> {")
+                    lines.append("                return .fault(error.fault)")
+                    lines.append("            } catch {")
+                    lines.append("                throw error")
+                    lines.append("            }")
+                    lines.append("        }")
+                }
+            }
+            lines.append("    }")
         }
-        lines.append("    }")
+
+        if generateRaw {
+            let rawProtocolName = apiStyle == .both ? "\(protocolTypeName)Raw" : protocolTypeName
+            let methodName = apiStyle == .both ? "registerRaw" : "register"
+            lines.append("")
+            lines.append("    public func \(methodName)(implementation: \(implementationTypePrefix)\(rawProtocolName)) async \(throwsClause) {")
+            for operation in port.operations {
+                lines.append("        try \(operation.operationContractTypeName).validateBinding()")
+                
+                if operation.messageExchangePattern == .oneWay {
+                    lines.append("        try await server.registerOneWay(\(operation.operationContractTypeName).self) { request in")
+                    lines.append("            _ = try await implementation.\(operation.swiftMethodName)(request: request)")
+                    lines.append("        }")
+                } else {
+                    lines.append("        try await server.register(\(operation.operationContractTypeName).self) { request in")
+                    lines.append("            try await implementation.\(operation.swiftMethodName)(request: request)")
+                    lines.append("        }")
+                }
+            }
+            lines.append("    }")
+        }
         lines.append("}")
         return lines
     }
@@ -1014,19 +1153,39 @@ private extension SwiftCodeEmitter {
     func emitNIOServerLines(
         service: ServiceIR,
         port: ServicePortIR,
-        syntaxProfile: CodeGenerationSyntaxProfile
+        syntaxProfile: CodeGenerationSyntaxProfile,
+        apiStyle: CodeGenerationAPIStyle
     ) -> [String] {
         let implementationTypePrefix = existentialTypePrefix(syntaxProfile: syntaxProfile)
         let serverType = existentialType("SOAPServerNIO", syntaxProfile: syntaxProfile)
         let protocolTypeName = "\(service.swiftTypeName)\(port.swiftTypeName)NIOService"
         let registrarTypeName = "\(service.swiftTypeName)\(port.swiftTypeName)NIOServerRegistrar"
+        let generateRaw = apiStyle == .raw || apiStyle == .both
+        let generateErgonomic = apiStyle == .ergonomic || apiStyle == .both
 
         var lines: [String] = []
-        lines.append("public protocol \(protocolTypeName) {")
-        for operation in port.operations {
-            lines.append("    func \(operation.swiftMethodName)(request: \(operation.requestPayloadTypeName), on eventLoop: EventLoop) -> EventLoopFuture<SOAPOperationResponse<\(operation.responsePayloadTypeName), \(operation.faultDetailTypeName)>>")
+        if generateErgonomic {
+            lines.append("public protocol \(protocolTypeName) {")
+            for operation in port.operations {
+                if operation.messageExchangePattern == .oneWay {
+                    lines.append("    func \(operation.swiftMethodName)(request: \(operation.requestPayloadTypeName), on eventLoop: EventLoop) -> EventLoopFuture<Void>")
+                } else {
+                    lines.append("    func \(operation.swiftMethodName)(request: \(operation.requestPayloadTypeName), on eventLoop: EventLoop) -> EventLoopFuture<\(operation.responsePayloadTypeName)>")
+                }
+            }
+            lines.append("}")
         }
-        lines.append("}")
+
+        if generateRaw {
+            let rawProtocolName = apiStyle == .both ? "\(protocolTypeName)Raw" : protocolTypeName
+            lines.append("")
+            lines.append("public protocol \(rawProtocolName) {")
+            for operation in port.operations {
+                lines.append("    func \(operation.swiftMethodName)(request: \(operation.requestPayloadTypeName), on eventLoop: EventLoop) -> EventLoopFuture<SOAPOperationResponse<\(operation.responsePayloadTypeName), \(operation.faultDetailTypeName)>>")
+            }
+            lines.append("}")
+        }
+
         lines.append("")
         lines.append("public struct \(registrarTypeName) {")
         lines.append("    public let server: \(serverType)")
@@ -1035,18 +1194,55 @@ private extension SwiftCodeEmitter {
         lines.append("        self.server = server")
         lines.append("    }")
         lines.append("")
-        lines.append("    public func register(implementation: \(implementationTypePrefix)\(protocolTypeName)) {")
-        for operation in port.operations {
-            lines.append("        server.register(\(operation.operationContractTypeName).self) { request, eventLoop in")
-            lines.append("            do {")
-            lines.append("                try \(operation.operationContractTypeName).validateBinding()")
-            lines.append("            } catch {")
-            lines.append("                return eventLoop.makeFailedFuture(error)")
-            lines.append("            }")
-            lines.append("            return implementation.\(operation.swiftMethodName)(request: request, on: eventLoop)")
-            lines.append("        }")
+
+        if generateErgonomic {
+            lines.append("    public func register(implementation: \(implementationTypePrefix)\(protocolTypeName)) {")
+            for operation in port.operations {
+                if operation.messageExchangePattern == .oneWay {
+                    lines.append("        server.registerOneWay(\(operation.operationContractTypeName).self) { request, eventLoop in")
+                    lines.append("            do {")
+                    lines.append("                try \(operation.operationContractTypeName).validateBinding()")
+                    lines.append("            } catch {")
+                    lines.append("                return eventLoop.makeFailedFuture(error)")
+                    lines.append("            }")
+                    lines.append("            return implementation.\(operation.swiftMethodName)(request: request, on: eventLoop)")
+                    lines.append("        }")
+                } else {
+                    lines.append("        server.register(\(operation.operationContractTypeName).self) { request, eventLoop in")
+                    lines.append("            do {")
+                    lines.append("                try \(operation.operationContractTypeName).validateBinding()")
+                    lines.append("            } catch {")
+                    lines.append("                return eventLoop.makeFailedFuture(error)")
+                    lines.append("            }")
+                    lines.append("            return implementation.\(operation.swiftMethodName)(request: request, on: eventLoop).map { .success($0) }.flatMapError { error in")
+                    lines.append("                if let fault = error as? SOAPFaultError<\(operation.faultDetailTypeName)> {")
+                    lines.append("                    return eventLoop.makeSucceededFuture(.fault(fault.fault))")
+                    lines.append("                }")
+                    lines.append("                return eventLoop.makeFailedFuture(error)")
+                    lines.append("            }")
+                    lines.append("        }")
+                }
+            }
+            lines.append("    }")
         }
-        lines.append("    }")
+
+        if generateRaw {
+            let rawProtocolName = apiStyle == .both ? "\(protocolTypeName)Raw" : protocolTypeName
+            let methodName = apiStyle == .both ? "registerRaw" : "register"
+            lines.append("")
+            lines.append("    public func \(methodName)(implementation: \(implementationTypePrefix)\(rawProtocolName)) {")
+            for operation in port.operations {
+                lines.append("        server.register(\(operation.operationContractTypeName).self) { request, eventLoop in")
+                lines.append("            do {")
+                lines.append("                try \(operation.operationContractTypeName).validateBinding()")
+                lines.append("            } catch {")
+                lines.append("                return eventLoop.makeFailedFuture(error)")
+                lines.append("            }")
+                lines.append("            return implementation.\(operation.swiftMethodName)(request: request, on: eventLoop)")
+                lines.append("        }")
+            }
+            lines.append("    }")
+        }
         lines.append("}")
         return lines
     }

@@ -6,6 +6,29 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Added (SOAP Ergonomic API and MEP Support)
+
+#### Codegen core
+- Added `CodeGenerationAPIStyle` enum (`.raw`, `.ergonomic`, `.both`) to `CodeGenConfiguration`.
+- `SOAPCodeGenerationIR` now propagates `apiStyle` to the emitter.
+- `SwiftCodeEmitter` now generates ergonomic client methods (direct payload return, throws `SOAPFaultError`) and server protocols (direct payload return, throws `SOAPFaultError`).
+- Raw API methods are now suffixed with `Raw` when `apiStyle` is set to `.both`.
+- Explicit support for `.requestResponse` and `.oneWay` Message Exchange Patterns (MEPs) across all runtimes.
+- One-way operations now correctly return `Void` and use `invokeOneWay` in both raw and ergonomic styles.
+
+#### Runtime
+- `SOAPClientAsync` and `SOAPClientNIO` now provide ergonomic `invoke` methods that handle SOAP faults by throwing `SOAPFaultError`.
+- Added `SOAPFaultError`, a typed `Error` wrapper for SOAP faults.
+- Server registrars now include adapter logic to map ergonomic service implementations to the underlying raw SOAP handlers.
+
+#### Examples
+- Updated `Examples/CalculatorClient/` to use ergonomic `try await` calls with `apiStyle: "both"`.
+- Updated `Examples/ReservationDeskServerExample/` to use ergonomic service protocols with `apiStyle: "both"`.
+
+#### Tests
+- Updated `SwiftSOAPCodeGenCoreTests` to validate `apiStyle` and MEP generation.
+- Repaired `GeneratedRuntimeIntegrationTests` and golden snapshots to maintain baseline coverage for the raw API style.
+
 ### Fixed (CI lane compatibility)
 - Replaced Swift shorthand optional-binding syntax in `SwiftSOAPCodeGenCore`
   (`if let value { ... }`, `guard let value else { ... }`) with Swift 5.6-compatible
