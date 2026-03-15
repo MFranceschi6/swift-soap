@@ -4,15 +4,6 @@ import SwiftSOAPCore
 ///
 /// Receives the decoded request payload and must return a ``SOAPOperationResponse``.
 /// Register handlers via ``SOAPServerAsync/register(_:handler:)``.
-#if swift(>=6.0)
-public typealias SOAPAsyncOperationHandler<Operation: SOAPOperationContract> = @Sendable (
-    Operation.RequestPayload
-) async throws(any Error) -> SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload>
-
-public typealias SOAPAsyncOneWayOperationHandler<Operation: SOAPOperationContract> = @Sendable (
-    Operation.RequestPayload
-) async throws(any Error) -> Void
-#else
 public typealias SOAPAsyncOperationHandler<Operation: SOAPOperationContract> = @Sendable (
     Operation.RequestPayload
 ) async throws -> SOAPOperationResponse<Operation.ResponsePayload, Operation.FaultDetailPayload>
@@ -20,7 +11,6 @@ public typealias SOAPAsyncOperationHandler<Operation: SOAPOperationContract> = @
 public typealias SOAPAsyncOneWayOperationHandler<Operation: SOAPOperationContract> = @Sendable (
     Operation.RequestPayload
 ) async throws -> Void
-#endif
 
 /// An async SOAP server that dispatches incoming operations to registered handlers.
 ///
